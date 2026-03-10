@@ -107,6 +107,20 @@
   </div>
 </div>
 
+<!-- Spending trend line chart -->
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h6 class="fw-semibold mb-0">Spending Trend</h6>
+      </div>
+      <div class="card-body" style="min-height:220px">
+        <canvas id="trendChart" style="max-height:200px"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Vendors + Recent transactions -->
 <div class="row g-3 mb-4">
   <div class="col-md-5">
@@ -172,73 +186,118 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
+try {
   const chartData = JSON.parse(document.getElementById('chart-data').textContent);
-  const COLOURS = [
-    '#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
-    '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'
-  ];
+
+  // Generate distinct HSL colours for any number of items
+  function colours(n) {
+    return Array.from({ length: n }, (_, i) =>
+      `hsl(${Math.round(i * 360 / Math.max(n, 1))}, 60%, 55%)`
+    );
+  }
+
+  function noData(canvasEl, msg) {
+    canvasEl.closest('.card-body').innerHTML =
+      `<p class="text-muted text-center small py-4 mb-0">${msg}</p>`;
+  }
 
   // Expense by category — doughnut
-  const catCtx = document.getElementById('categoryChart');
-  if (chartData.category_pie.labels.length) {
-    new Chart(catCtx, {
-      type: 'doughnut',
-      data: {
-        labels: chartData.category_pie.labels,
-        datasets: [{ data: chartData.category_pie.data,
-          backgroundColor: COLOURS.slice(0, chartData.category_pie.labels.length), borderWidth: 1 }]
-      },
-      options: {
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
-        cutout: '60%',
-      }
-    });
-  } else {
-    catCtx.closest('.card-body').innerHTML = '<p class="text-muted text-center small py-4 mb-0">No categorized expenses yet.</p>';
-  }
+  try {
+    const catCtx = document.getElementById('categoryChart');
+    if (chartData.category_pie.labels.length) {
+      new Chart(catCtx, {
+        type: 'doughnut',
+        data: {
+          labels: chartData.category_pie.labels,
+          datasets: [{ data: chartData.category_pie.data,
+            backgroundColor: colours(chartData.category_pie.labels.length), borderWidth: 1 }]
+        },
+        options: {
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+          cutout: '60%',
+        }
+      });
+    } else { noData(catCtx, 'No categorized expenses yet.'); }
+  } catch (e) { console.error('Category chart error:', e); }
 
   // Monthly income vs expense — grouped bar
-  const monthCtx = document.getElementById('monthlyChart');
-  if (chartData.monthly.labels.length) {
-    new Chart(monthCtx, {
-      type: 'bar',
-      data: {
-        labels: chartData.monthly.labels,
-        datasets: [
-          { label: 'Income', data: chartData.monthly.income,
-            backgroundColor: 'rgba(25,135,84,0.75)', borderRadius: 3 },
-          { label: 'Expenses', data: chartData.monthly.expense,
-            backgroundColor: 'rgba(220,53,69,0.75)', borderRadius: 3 }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
-        scales: { y: { beginAtZero: true, ticks: { callback: v => '$' + v.toLocaleString() } } }
-      }
-    });
-  } else {
-    monthCtx.closest('.card-body').innerHTML = '<p class="text-muted text-center small py-4 mb-0">No data yet.</p>';
-  }
+  try {
+    const monthCtx = document.getElementById('monthlyChart');
+    if (chartData.monthly.labels.length) {
+      new Chart(monthCtx, {
+        type: 'bar',
+        data: {
+          labels: chartData.monthly.labels,
+          datasets: [
+            { label: 'Income', data: chartData.monthly.income,
+              backgroundColor: 'rgba(25,135,84,0.75)', borderRadius: 3 },
+            { label: 'Expenses', data: chartData.monthly.expense,
+              backgroundColor: 'rgba(220,53,69,0.75)', borderRadius: 3 }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+          scales: { y: { beginAtZero: true, ticks: { callback: v => '$' + v.toLocaleString() } } }
+        }
+      });
+    } else { noData(monthCtx, 'No data yet.'); }
+  } catch (e) { console.error('Monthly chart error:', e); }
+
+  // Spending trend — net cash flow per month as a line
+  try {
+    const trendCtx = document.getElementById('trendChart');
+    if (chartData.monthly.labels.length) {
+      const netData = chartData.monthly.income.map(
+        (inc, i) => Math.round((inc - chartData.monthly.expense[i]) * 100) / 100
+      );
+      new Chart(trendCtx, {
+        type: 'line',
+        data: {
+          labels: chartData.monthly.labels,
+          datasets: [
+            { label: 'Income', data: chartData.monthly.income,
+              borderColor: 'rgba(25,135,84,0.9)', backgroundColor: 'rgba(25,135,84,0.1)',
+              fill: true, tension: 0.3, pointRadius: 3 },
+            { label: 'Expenses', data: chartData.monthly.expense,
+              borderColor: 'rgba(220,53,69,0.9)', backgroundColor: 'rgba(220,53,69,0.1)',
+              fill: true, tension: 0.3, pointRadius: 3 },
+            { label: 'Net', data: netData,
+              borderColor: 'rgba(13,110,253,0.9)', backgroundColor: 'transparent',
+              borderDash: [5, 3], tension: 0.3, pointRadius: 3 }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+          scales: { y: { ticks: { callback: v => '$' + v.toLocaleString() } } }
+        }
+      });
+    } else { noData(trendCtx, 'No data yet.'); }
+  } catch (e) { console.error('Trend chart error:', e); }
 
   // Top vendors — horizontal bar
-  const vendorCtx = document.getElementById('vendorChart');
-  if (chartData.vendors.labels.length) {
-    new Chart(vendorCtx, {
-      type: 'bar',
-      data: {
-        labels: chartData.vendors.labels,
-        datasets: [{ label: 'Total Spend', data: chartData.vendors.data,
-          backgroundColor: COLOURS.slice(0, chartData.vendors.labels.length), borderRadius: 3 }]
-      },
-      options: {
-        indexAxis: 'y', responsive: true,
-        plugins: { legend: { display: false } },
-        scales: { x: { beginAtZero: true, ticks: { callback: v => '$' + v.toLocaleString() } } }
-      }
-    });
-  } else {
-    vendorCtx.closest('.card-body').innerHTML = '<p class="text-muted text-center small py-4 mb-0">No vendor data yet.</p>';
-  }
+  try {
+    const vendorCtx = document.getElementById('vendorChart');
+    if (chartData.vendors.labels.length) {
+      new Chart(vendorCtx, {
+        type: 'bar',
+        data: {
+          labels: chartData.vendors.labels,
+          datasets: [{ label: 'Total Spend', data: chartData.vendors.data,
+            backgroundColor: colours(chartData.vendors.labels.length), borderRadius: 3 }]
+        },
+        options: {
+          indexAxis: 'y', responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { x: { beginAtZero: true, ticks: { callback: v => '$' + v.toLocaleString() } } }
+        }
+      });
+    } else { noData(vendorCtx, 'No vendor data yet.'); }
+  } catch (e) { console.error('Vendor chart error:', e); }
+
+} catch (e) {
+  console.error('Dashboard chart initialisation failed:', e);
+}
 </script>
 {% endblock %}

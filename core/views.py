@@ -2,12 +2,15 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.core.paginator import Paginator
+from django.db import transaction as db_transaction
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse
 from collections import OrderedDict
 from decimal import Decimal
 import csv as csv_module
+import datetime
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm
@@ -48,8 +51,16 @@ def profile_edit(request):
 
 @login_required
 def dashboard(request):
-    date_from = request.GET.get('date_from', '')
-    date_to = request.GET.get('date_to', '')
+    def parse_date(val):
+        try:
+            return datetime.date.fromisoformat(val) if val else None
+        except ValueError:
+            return None
+
+    date_from_raw = request.GET.get('date_from', '').strip()
+    date_to_raw = request.GET.get('date_to', '').strip()
+    date_from = parse_date(date_from_raw)
+    date_to = parse_date(date_to_raw)
 
     qs = Transaction.objects.filter(user=request.user)
     if date_from:
@@ -125,8 +136,8 @@ def dashboard(request):
         'uncategorized_count': uncategorized_count,
         'recent_transactions': recent_transactions,
         'chart_data': chart_data,
-        'date_from': date_from,
-        'date_to': date_to,
+        'date_from': date_from.isoformat() if date_from else '',
+        'date_to': date_to.isoformat() if date_to else '',
         'total_transactions': qs.count(),
     })
 
@@ -178,13 +189,22 @@ def transaction_list(request):
             qs = qs.filter(status=d['status'])
         if d.get('vendor'):
             qs = qs.filter(vendor__icontains=d['vendor'])
+        if d.get('amount_min') is not None:
+            qs = qs.filter(amount__gte=d['amount_min'])
+        if d.get('amount_max') is not None:
+            qs = qs.filter(amount__lte=d['amount_max'])
         sort = d.get('sort') or '-date'
         qs = qs.order_by(sort)
 
+    total_count = qs.count()
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
     return render(request, 'transactions/list.html', {
-        'transactions': qs,
+        'transactions': page_obj,
         'filter_form': filter_form,
-        'total_count': qs.count(),
+        'total_count': total_count,
+        'page_obj': page_obj,
     })
 
 
@@ -253,7 +273,8 @@ def csv_upload(request):
                 duplicate_count = sum(1 for r in rows if r['is_duplicate'] and not r['errors'])
                 error_count = sum(1 for r in rows if r['errors'])
                 if to_import:
-                    Transaction.objects.bulk_create(to_import)
+                    with db_transaction.atomic():
+                        Transaction.objects.bulk_create(to_import)
                 parts = [f'Imported {len(to_import)} transaction(s).']
                 if duplicate_count:
                     parts.append(f'Skipped {duplicate_count} duplicate(s).')

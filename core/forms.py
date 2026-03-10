@@ -48,14 +48,18 @@ class TransactionForm(forms.ModelForm):
 
 
 class CSVUploadForm(forms.Form):
+    MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
+
     file = forms.FileField(
-        help_text='CSV with headers: Date, Description, Amount, Vendor'
+        help_text='CSV with headers: Date, Description, Amount, Vendor. Max 5 MB.'
     )
 
     def clean_file(self):
         f = self.cleaned_data['file']
         if not f.name.endswith('.csv'):
             raise forms.ValidationError('File must be a .csv file.')
+        if f.size > self.MAX_UPLOAD_SIZE:
+            raise forms.ValidationError('File too large. Maximum size is 5 MB.')
         return f
 
 
@@ -76,6 +80,14 @@ class TransactionFilterForm(forms.Form):
         choices=[('', 'All Statuses')] + Transaction.STATUS_CHOICES, required=False
     )
     vendor = forms.CharField(required=False, max_length=200)
+    amount_min = forms.DecimalField(
+        required=False, min_value=Decimal('0'), decimal_places=2,
+        widget=forms.NumberInput(attrs={'step': '0.01', 'min': '0', 'placeholder': 'Min $'}),
+    )
+    amount_max = forms.DecimalField(
+        required=False, min_value=Decimal('0'), decimal_places=2,
+        widget=forms.NumberInput(attrs={'step': '0.01', 'min': '0', 'placeholder': 'Max $'}),
+    )
     sort = forms.ChoiceField(
         choices=[
             ('-date', 'Date (newest)'),

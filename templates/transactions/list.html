@@ -79,6 +79,18 @@
         <input type="text" name="vendor" class="form-control form-control-sm"
                placeholder="Search vendor..." value="{{ filter_form.vendor.value|default:'' }}">
       </div>
+      <div class="col-sm-6 col-md-auto">
+        <label class="form-label small mb-1">Min Amount ($)</label>
+        <input type="number" name="amount_min" class="form-control form-control-sm"
+               step="0.01" min="0" placeholder="0.00"
+               value="{{ filter_form.amount_min.value|default:'' }}" style="width:100px">
+      </div>
+      <div class="col-sm-6 col-md-auto">
+        <label class="form-label small mb-1">Max Amount ($)</label>
+        <input type="number" name="amount_max" class="form-control form-control-sm"
+               step="0.01" min="0" placeholder="0.00"
+               value="{{ filter_form.amount_max.value|default:'' }}" style="width:100px">
+      </div>
       <div class="col-auto d-flex gap-1 align-items-end">
         <button type="submit" class="btn btn-dark btn-sm">Filter</button>
         <a href="{% url 'transaction_list' %}" class="btn btn-outline-secondary btn-sm">Clear</a>
@@ -176,8 +188,37 @@
           </tbody>
         </table>
       </div>
-      <div class="px-4 py-2 text-muted small border-top">
-        {{ total_count }} transaction{{ total_count|pluralize }}
+      <div class="px-4 py-2 text-muted small border-top d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span>{{ total_count }} transaction{{ total_count|pluralize }}</span>
+        {% if page_obj.has_other_pages %}
+          <nav>
+            <ul class="pagination pagination-sm mb-0">
+              {% if page_obj.has_previous %}
+                <li class="page-item">
+                  <a class="page-link" href="?{{ request.GET.urlencode }}&page={{ page_obj.previous_page_number }}">‹</a>
+                </li>
+              {% else %}
+                <li class="page-item disabled"><span class="page-link">‹</span></li>
+              {% endif %}
+              {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                  <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                {% elif num >= page_obj.number|add:"-2" and num <= page_obj.number|add:"2" %}
+                  <li class="page-item">
+                    <a class="page-link" href="?{{ request.GET.urlencode }}&page={{ num }}">{{ num }}</a>
+                  </li>
+                {% endif %}
+              {% endfor %}
+              {% if page_obj.has_next %}
+                <li class="page-item">
+                  <a class="page-link" href="?{{ request.GET.urlencode }}&page={{ page_obj.next_page_number }}">›</a>
+                </li>
+              {% else %}
+                <li class="page-item disabled"><span class="page-link">›</span></li>
+              {% endif %}
+            </ul>
+          </nav>
+        {% endif %}
       </div>
     {% else %}
       <div class="text-center py-5 text-muted">
