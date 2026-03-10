@@ -76,9 +76,11 @@
             </div>
 
             <div class="col-md-6">
-              <label for="{{ form.category.id_for_label }}" class="form-label">
+              <label for="{{ form.category.id_for_label }}" class="form-label d-flex align-items-center justify-content-between">
                 Category
-                <!-- "Suggest Category" button added in Step 5 -->
+                <button type="button" id="suggest-btn" class="btn btn-sm btn-outline-primary ms-2">
+                  <i class="bi bi-stars me-1"></i>Suggest
+                </button>
               </label>
               <select name="category" id="{{ form.category.id_for_label }}"
                       class="form-select {% if form.category.errors %}is-invalid{% endif %}">
@@ -90,6 +92,7 @@
                 {% endfor %}
               </select>
               {% for e in form.category.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+              <div id="suggest-feedback" class="form-text d-none"></div>
             </div>
 
           </div>
@@ -104,4 +107,65 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const btn = document.getElementById('suggest-btn');
+  const feedback = document.getElementById('suggest-feedback');
+  const categorySelect = document.getElementById('{{ form.category.id_for_label }}');
+  const descInput = document.getElementById('{{ form.description.id_for_label }}');
+  const vendorInput = document.getElementById('{{ form.vendor.id_for_label }}');
+
+  function getCsrfToken() {
+    const match = document.cookie.match(/csrftoken=([^;]+)/);
+    return match ? match[1] : '';
+  }
+
+  btn.addEventListener('click', async function () {
+    const description = descInput.value.trim();
+    if (!description) {
+      feedback.textContent = 'Enter a description first.';
+      feedback.className = 'form-text text-warning';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Thinking…';
+    feedback.className = 'form-text d-none';
+
+    try {
+      const res = await fetch('{% url "api_suggest_category" %}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrfToken(),
+        },
+        body: JSON.stringify({
+          description: description,
+          vendor: vendorInput ? vendorInput.value.trim() : '',
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.suggestion && data.category_id) {
+        categorySelect.value = data.category_id;
+        feedback.textContent = 'Suggested: ' + data.suggestion;
+        feedback.className = 'form-text text-success';
+      } else {
+        feedback.textContent = 'No suggestion available — categorize manually.';
+        feedback.className = 'form-text text-muted';
+      }
+    } catch (e) {
+      feedback.textContent = 'AI service unavailable. Please categorize manually.';
+      feedback.className = 'form-text text-danger';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-stars me-1"></i>Suggest';
+    }
+  });
+})();
+</script>
 {% endblock %}

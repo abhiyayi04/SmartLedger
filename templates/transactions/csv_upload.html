@@ -17,7 +17,7 @@
           <code class="small">Date,Description,Amount,Vendor</code><br>
           <code class="small text-muted">2024-01-15,AWS Invoice,-120.00,Amazon</code><br>
           <code class="small text-muted">2024-01-16,Client Payment,5000.00,Acme Corp</code>
-          <p class="mb-0 mt-2 small text-muted">Negative amount → Expense &nbsp;|&nbsp; Positive amount → Income</p>
+          <p class="mb-0 mt-2 small text-muted">Negative amount → Expense &nbsp;|&nbsp; Positive amount → Income &nbsp;|&nbsp; Duplicates are skipped automatically</p>
         </div>
 
         <form method="post" enctype="multipart/form-data">
@@ -30,7 +30,7 @@
           </div>
           <div class="d-grid mt-4">
             <button type="submit" class="btn btn-dark">
-              <i class="bi bi-upload me-1"></i>Upload & Preview
+              <i class="bi bi-upload me-1"></i>Import Transactions
             </button>
           </div>
         </form>

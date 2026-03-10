@@ -12,8 +12,13 @@ urlpatterns = [
     path('transactions/<int:pk>/edit/', views.transaction_edit, name='transaction_edit'),
     path('transactions/<int:pk>/delete/', views.transaction_delete, name='transaction_delete'),
     path('transactions/upload/', views.csv_upload, name='csv_upload'),
-    path('transactions/upload/preview/', views.csv_preview, name='csv_preview'),
     path('transactions/export/', views.export_csv, name='export_csv'),
+    # AI API
+    path('api/suggest-category/', views.api_suggest_category, name='api_suggest_category'),
+    path('api/batch-suggest/', views.api_batch_suggest, name='api_batch_suggest'),
+    path('api/suggest-uncategorized/', views.api_suggest_uncategorized, name='api_suggest_uncategorized'),
+    path('api/suggest-for-transaction/<int:pk>/', views.api_suggest_for_transaction, name='api_suggest_for_transaction'),
+    path('api/accept-suggestion/<int:pk>/', views.api_accept_suggestion, name='api_accept_suggestion'),
     # Categories
     path('categories/', views.category_list, name='category_list'),
     path('categories/add/', views.category_add, name='category_add'),

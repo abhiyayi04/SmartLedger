@@ -19,7 +19,17 @@
   {% endif %}
 </div>
 
-<form method="post">
+<!-- AI Suggest button -->
+{% if valid_count %}
+<div class="mb-3">
+  <button type="button" id="batch-suggest-btn" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-stars me-1"></i>Suggest Categories with AI
+  </button>
+  <span id="batch-suggest-status" class="ms-2 text-muted small d-none"></span>
+</div>
+{% endif %}
+
+<form method="post" id="import-form">
   {% csrf_token %}
   <div class="card border-0 shadow-sm mb-3">
     <div class="card-body p-0">
@@ -36,12 +46,16 @@
               <th>Vendor</th>
               <th>Type</th>
               <th class="text-end">Amount</th>
+              <th>AI Category</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {% for row in rows %}
-              <tr class="{% if row.errors %}table-danger{% elif row.is_duplicate %}table-warning{% endif %}">
+              <tr class="{% if row.errors %}table-danger{% elif row.is_duplicate %}table-warning{% endif %}"
+                  data-index="{{ forloop.counter0 }}"
+                  data-description="{{ row.description }}"
+                  data-vendor="{{ row.vendor }}">
                 <td class="ps-3">
                   {% if not row.errors %}
                     <input type="checkbox" name="selected_rows" value="{{ forloop.counter0 }}"
@@ -65,6 +79,11 @@
                 <td class="text-end">
                   {% if row.amount %}${{ row.amount }}{% else %}{{ row.amount_str }}{% endif %}
                 </td>
+                <td class="ai-suggestion-cell text-muted small">—
+                  {% if not row.errors %}
+                    <input type="hidden" name="ai_suggested_{{ forloop.counter0 }}" value="">
+                  {% endif %}
+                </td>
                 <td>
                   {% if row.errors %}
                     <span class="badge bg-danger" title="{{ row.errors|join:', ' }}">Error</span>
@@ -77,7 +96,7 @@
               </tr>
               {% if row.errors %}
                 <tr class="table-danger">
-                  <td colspan="8" class="ps-3 small text-danger fst-italic">
+                  <td colspan="9" class="ps-3 small text-danger fst-italic">
                     {% for e in row.errors %}{{ e }}{% if not forloop.last %} · {% endif %}{% endfor %}
                   </td>
                 </tr>
@@ -96,10 +115,86 @@
     <a href="{% url 'csv_upload' %}" class="btn btn-outline-secondary">Cancel</a>
   </div>
 </form>
+{% endblock %}
 
+{% block extra_js %}
 <script>
+  // Select-all checkbox
   document.getElementById('select-all').addEventListener('change', function () {
     document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
   });
+
+  // Batch AI suggest
+  const batchBtn = document.getElementById('batch-suggest-btn');
+  if (batchBtn) {
+    batchBtn.addEventListener('click', async function () {
+      function getCsrfToken() {
+        const match = document.cookie.match(/csrftoken=([^;]+)/);
+        return match ? match[1] : '';
+      }
+
+      const status = document.getElementById('batch-suggest-status');
+      batchBtn.disabled = true;
+      batchBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Asking AI…';
+      status.textContent = '';
+      status.className = 'ms-2 text-muted small';
+
+      // Collect valid (non-error) rows
+      const rows = [];
+      document.querySelectorAll('tbody tr[data-index]').forEach(tr => {
+        // Skip error rows (no checkbox in them)
+        const cb = tr.querySelector('.row-check, .bi-x-circle');
+        if (tr.querySelector('.bi-x-circle')) return;
+        rows.push({
+          index: tr.dataset.index,
+          description: tr.dataset.description,
+          vendor: tr.dataset.vendor,
+        });
+      });
+
+      try {
+        const res = await fetch('{% url "api_batch_suggest" %}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+          },
+          body: JSON.stringify({ rows }),
+        });
+
+        const data = await res.json();
+        const suggestions = data.suggestions || {};
+        let filled = 0;
+
+        Object.entries(suggestions).forEach(([idx, info]) => {
+          const tr = document.querySelector(`tr[data-index="${idx}"]`);
+          if (!tr) return;
+          const cell = tr.querySelector('.ai-suggestion-cell');
+          const hidden = tr.querySelector(`input[name="ai_suggested_${idx}"]`);
+          if (cell) {
+            cell.innerHTML = `<span class="badge bg-primary-subtle text-primary border border-primary-subtle">${info.name}</span>`;
+            if (hidden) hidden.value = info.category_id || '';
+          }
+          filled++;
+        });
+
+        if (filled > 0) {
+          status.textContent = `${filled} suggestion${filled > 1 ? 's' : ''} applied.`;
+          status.className = 'ms-2 text-success small';
+        } else {
+          status.textContent = 'No suggestions returned — categorize manually after import.';
+          status.className = 'ms-2 text-muted small';
+        }
+        status.classList.remove('d-none');
+      } catch (e) {
+        status.textContent = 'AI service unavailable.';
+        status.className = 'ms-2 text-danger small';
+        status.classList.remove('d-none');
+      } finally {
+        batchBtn.disabled = false;
+        batchBtn.innerHTML = '<i class="bi bi-stars me-1"></i>Suggest Categories with AI';
+      }
+    });
+  }
 </script>
 {% endblock %}

@@ -5,7 +5,10 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="fw-bold mb-0">Transactions</h2>
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 flex-wrap">
+    <button type="button" id="suggest-all-btn" class="btn btn-outline-primary">
+      <i class="bi bi-stars me-1"></i>Suggest All Uncategorized
+    </button>
     <a href="{% url 'export_csv' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-dark">
       <i class="bi bi-download me-1"></i>Export CSV
     </a>
@@ -17,6 +20,8 @@
     </a>
   </div>
 </div>
+
+<div id="suggest-all-status" class="d-none mb-2"></div>
 
 <!-- Filters -->
 <div class="card border-0 shadow-sm mb-3">
@@ -106,11 +111,37 @@
                 <td class="ps-4 text-nowrap">{{ t.date }}</td>
                 <td>{{ t.description }}</td>
                 <td class="text-muted small">{{ t.vendor|default:"—" }}</td>
-                <td>
+                <td id="cat-cell-{{ t.pk }}">
                   {% if t.category %}
                     <span class="badge bg-secondary">{{ t.category.name }}</span>
+                  {% elif t.ai_suggested_category %}
+                    <div class="d-flex flex-column gap-1">
+                      <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                        <i class="bi bi-stars me-1"></i>{{ t.ai_suggested_category.name }}
+                      </span>
+                      <div class="d-flex gap-1">
+                        <button type="button"
+                                class="btn btn-success btn-sm py-0 accept-btn"
+                                style="font-size:0.75rem"
+                                data-pk="{{ t.pk }}"
+                                data-name="{{ t.ai_suggested_category.name }}">
+                          <i class="bi bi-check-lg"></i> Accept
+                        </button>
+                        <a href="{% url 'transaction_edit' t.pk %}"
+                           class="btn btn-outline-secondary btn-sm py-0"
+                           style="font-size:0.75rem">Change</a>
+                      </div>
+                    </div>
                   {% else %}
-                    <span class="badge bg-warning text-dark">Uncategorized</span>
+                    <div class="d-flex flex-column gap-1">
+                      <span class="badge bg-warning text-dark">Uncategorized</span>
+                      <button type="button"
+                              class="btn btn-outline-primary btn-sm py-0 suggest-row-btn"
+                              style="font-size:0.75rem"
+                              data-pk="{{ t.pk }}">
+                        <i class="bi bi-stars me-1"></i>Suggest
+                      </button>
+                    </div>
                   {% endif %}
                 </td>
                 <td>
@@ -158,4 +189,130 @@
     {% endif %}
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  function getCsrfToken() {
+    const match = document.cookie.match(/csrftoken=([^;]+)/);
+    return match ? match[1] : '';
+  }
+
+  function renderSuggestion(pk, name) {
+    document.getElementById(`cat-cell-${pk}`).innerHTML = `
+      <div class="d-flex flex-column gap-1">
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+          <i class="bi bi-stars me-1"></i>${name}
+        </span>
+        <div class="d-flex gap-1">
+          <button type="button"
+                  class="btn btn-success btn-sm py-0 accept-btn"
+                  style="font-size:0.75rem"
+                  data-pk="${pk}"
+                  data-name="${name}">
+            <i class="bi bi-check-lg"></i> Accept
+          </button>
+          <a href="/transactions/${pk}/edit/"
+             class="btn btn-outline-secondary btn-sm py-0"
+             style="font-size:0.75rem">Change</a>
+        </div>
+      </div>`;
+    bindAcceptBtn(document.querySelector(`#cat-cell-${pk} .accept-btn`));
+  }
+
+  function bindAcceptBtn(btn) {
+    btn.addEventListener('click', async function () {
+      const pk = btn.dataset.pk;
+      const name = btn.dataset.name;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+      try {
+        const res = await fetch(`/api/accept-suggestion/${pk}/`, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': getCsrfToken() },
+        });
+        if (res.ok) {
+          document.getElementById(`cat-cell-${pk}`).innerHTML =
+            `<span class="badge bg-secondary">${name}</span>`;
+        } else {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-check-lg"></i> Accept';
+        }
+      } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg"></i> Accept';
+      }
+    });
+  }
+
+  // Wire existing Accept buttons (already in DOM on page load)
+  document.querySelectorAll('.accept-btn').forEach(bindAcceptBtn);
+
+  // Per-row Suggest button
+  document.querySelectorAll('.suggest-row-btn').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      const pk = btn.dataset.pk;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+      try {
+        const res = await fetch(`/api/suggest-for-transaction/${pk}/`, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': getCsrfToken() },
+        });
+        const data = await res.json();
+        if (data.suggestion && data.category_id) {
+          renderSuggestion(pk, data.suggestion);
+        } else {
+          document.getElementById(`cat-cell-${pk}`).innerHTML =
+            `<span class="badge bg-warning text-dark">Uncategorized</span>
+             <div class="small text-muted mt-1">No suggestion found</div>`;
+        }
+      } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-stars me-1"></i>Suggest';
+      }
+    });
+  });
+
+  // Suggest All Uncategorized button
+  const suggestAllBtn = document.getElementById('suggest-all-btn');
+  const suggestAllStatus = document.getElementById('suggest-all-status');
+
+  suggestAllBtn.addEventListener('click', async function () {
+    suggestAllBtn.disabled = true;
+    suggestAllBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Asking AI…';
+    suggestAllStatus.className = 'd-none mb-2';
+
+    try {
+      const res = await fetch('/api/suggest-uncategorized/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCsrfToken() },
+      });
+      const data = await res.json();
+      const suggestions = data.suggestions || {};
+      const count = Object.keys(suggestions).length;
+
+      Object.entries(suggestions).forEach(([pk, info]) => {
+        if (document.getElementById(`cat-cell-${pk}`)) {
+          renderSuggestion(pk, info.name);
+        }
+      });
+
+      suggestAllStatus.className = `alert alert-${count > 0 ? 'success' : 'secondary'} py-2 mb-2`;
+      suggestAllStatus.textContent = count > 0
+        ? `${count} suggestion${count > 1 ? 's' : ''} applied. Review and accept below.`
+        : 'No new suggestions — all transactions may already be categorized.';
+    } catch (e) {
+      suggestAllStatus.className = 'alert alert-danger py-2 mb-2';
+      suggestAllStatus.textContent = 'AI service unavailable. Try again later.';
+    } finally {
+      suggestAllBtn.disabled = false;
+      suggestAllBtn.innerHTML = '<i class="bi bi-stars me-1"></i>Suggest All Uncategorized';
+    }
+  });
+})();
+</script>
 {% endblock %}

@@ -8,6 +8,8 @@ from django.http import HttpResponse
 from collections import OrderedDict
 from decimal import Decimal
 import csv as csv_module
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm
 from .models import Category, Transaction
 
@@ -159,7 +161,7 @@ def export_csv(request):
 
 @login_required
 def transaction_list(request):
-    qs = Transaction.objects.filter(user=request.user).select_related('category')
+    qs = Transaction.objects.filter(user=request.user).select_related('category', 'ai_suggested_category')
     filter_form = TransactionFilterForm(request.GET or None, user=request.user)
 
     if filter_form.is_valid():
@@ -232,58 +234,38 @@ def csv_upload(request):
     if request.method == 'POST':
         form = CSVUploadForm(request.POST, request.FILES)
         if form.is_valid():
-            from .services.csv_service import parse_csv, detect_duplicates, serialize_rows
+            from .services.csv_service import parse_csv, detect_duplicates
             try:
                 rows = parse_csv(request.FILES['file'])
                 rows = detect_duplicates(rows, request.user)
-                request.session['csv_preview'] = serialize_rows(rows)
-                return redirect('csv_preview')
+                to_import = [
+                    Transaction(
+                        user=request.user,
+                        date=row['date'],
+                        description=row['description'],
+                        amount=Decimal(row['amount']),
+                        vendor=row['vendor'],
+                        transaction_type=row['transaction_type'],
+                        status=Transaction.PENDING,
+                    )
+                    for row in rows if not row['errors'] and not row['is_duplicate']
+                ]
+                duplicate_count = sum(1 for r in rows if r['is_duplicate'] and not r['errors'])
+                error_count = sum(1 for r in rows if r['errors'])
+                if to_import:
+                    Transaction.objects.bulk_create(to_import)
+                parts = [f'Imported {len(to_import)} transaction(s).']
+                if duplicate_count:
+                    parts.append(f'Skipped {duplicate_count} duplicate(s).')
+                if error_count:
+                    parts.append(f'Skipped {error_count} invalid row(s).')
+                messages.success(request, ' '.join(parts))
+                return redirect('transaction_list')
             except ValueError as e:
                 messages.error(request, str(e))
     else:
         form = CSVUploadForm()
     return render(request, 'transactions/csv_upload.html', {'form': form})
-
-
-@login_required
-def csv_preview(request):
-    rows = request.session.get('csv_preview')
-    if not rows:
-        messages.error(request, 'No CSV data found. Please upload a file first.')
-        return redirect('csv_upload')
-
-    if request.method == 'POST':
-        selected = set(request.POST.getlist('selected_rows'))
-        to_import = []
-        for i, row in enumerate(rows):
-            if str(i) in selected and not row['errors']:
-                to_import.append(Transaction(
-                    user=request.user,
-                    date=row['date'],
-                    description=row['description'],
-                    amount=Decimal(row['amount']),
-                    vendor=row['vendor'],
-                    transaction_type=row['transaction_type'],
-                    status=Transaction.PENDING,
-                ))
-        if to_import:
-            Transaction.objects.bulk_create(to_import)
-            del request.session['csv_preview']
-            messages.success(request, f'Imported {len(to_import)} transaction(s).')
-            return redirect('transaction_list')
-        else:
-            messages.warning(request, 'No rows selected for import.')
-
-    valid_count = sum(1 for r in rows if not r['errors'] and not r['is_duplicate'])
-    duplicate_count = sum(1 for r in rows if r['is_duplicate'] and not r['errors'])
-    error_count = sum(1 for r in rows if r['errors'])
-
-    return render(request, 'transactions/csv_preview.html', {
-        'rows': rows,
-        'valid_count': valid_count,
-        'duplicate_count': duplicate_count,
-        'error_count': error_count,
-    })
 
 
 @login_required
@@ -335,3 +317,116 @@ def category_delete(request, pk):
         messages.success(request, f'Category "{name}" deleted.')
         return redirect('category_list')
     return render(request, 'categories/confirm_delete.html', {'category': category})
+
+
+@api_view(['POST'])
+def api_suggest_category(request):
+    description = request.data.get('description', '').strip()
+    vendor = request.data.get('vendor', '').strip()
+
+    if not description:
+        return Response({'error': 'description is required'}, status=400)
+
+    categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+
+    from .services.ai_service import suggest_category
+    name = suggest_category(description, vendor, categories)
+
+    if name is None:
+        return Response({'suggestion': None})
+
+    cat = Category.objects.filter(user=request.user, name=name).first()
+    return Response({'suggestion': name, 'category_id': cat.pk if cat else None})
+
+
+@api_view(['POST'])
+def api_batch_suggest(request):
+    rows = request.data.get('rows', [])
+
+    if not rows:
+        return Response({'suggestions': {}})
+
+    categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+
+    from .services.ai_service import batch_suggest
+    names = batch_suggest(rows, categories)
+
+    suggestions = {}
+    for idx, name in names.items():
+        cat = Category.objects.filter(user=request.user, name=name).first()
+        suggestions[idx] = {'name': name, 'category_id': cat.pk if cat else None}
+
+    return Response({'suggestions': suggestions})
+
+
+@api_view(['POST'])
+def api_suggest_uncategorized(request):
+    """
+    Run AI suggestions on all transactions for this user that have no category
+    and no existing ai_suggested_category. Saves suggestions to the DB and
+    returns {pk: {name, category_id}} for the caller to update the UI.
+    """
+    qs = Transaction.objects.filter(
+        user=request.user,
+        category__isnull=True,
+        ai_suggested_category__isnull=True,
+    ).values('id', 'description', 'vendor')
+
+    rows = [{'index': t['id'], 'description': t['description'], 'vendor': t['vendor'] or ''} for t in qs]
+
+    if not rows:
+        return Response({'suggestions': {}})
+
+    categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+
+    from .services.ai_service import batch_suggest
+    names = batch_suggest(rows, categories)
+
+    suggestions = {}
+    for pk_str, name in names.items():
+        cat = Category.objects.filter(user=request.user, name=name).first()
+        if cat:
+            Transaction.objects.filter(pk=int(pk_str), user=request.user).update(ai_suggested_category=cat)
+            suggestions[pk_str] = {'name': name, 'category_id': cat.pk}
+
+    return Response({'suggestions': suggestions})
+
+
+@api_view(['POST'])
+def api_suggest_for_transaction(request, pk):
+    """Run AI suggestion for a single existing transaction and save it to the DB."""
+    transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+
+    if transaction.category:
+        return Response({'error': 'Transaction already categorized.'}, status=400)
+
+    categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+
+    from .services.ai_service import suggest_category
+    name = suggest_category(transaction.description, transaction.vendor, categories)
+
+    if name is None:
+        return Response({'suggestion': None})
+
+    cat = Category.objects.filter(user=request.user, name=name).first()
+    if cat:
+        transaction.ai_suggested_category = cat
+        transaction.save(update_fields=['ai_suggested_category'])
+
+    return Response({'suggestion': name, 'category_id': cat.pk if cat else None})
+
+
+@api_view(['POST'])
+def api_accept_suggestion(request, pk):
+    transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+
+    if transaction.category:
+        return Response({'error': 'Transaction already has a category.'}, status=400)
+
+    if not transaction.ai_suggested_category:
+        return Response({'error': 'No AI suggestion to accept.'}, status=400)
+
+    transaction.category = transaction.ai_suggested_category
+    transaction.save(update_fields=['category'])
+
+    return Response({'category_name': transaction.category.name})
