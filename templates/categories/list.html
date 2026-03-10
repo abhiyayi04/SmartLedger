@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}Categories — SmartLedger{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="fw-bold mb-0">Categories</h2>
+  <a href="{% url 'category_add' %}" class="btn btn-dark">
+    <i class="bi bi-plus-lg me-1"></i>Add Category
+  </a>
+</div>
+
+<div class="row g-4">
+  <!-- Income Categories -->
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-success bg-opacity-10 border-0 py-3">
+        <h5 class="mb-0 fw-semibold text-success">
+          <i class="bi bi-arrow-up-circle me-2"></i>Income ({{ income_cats.count }})
+        </h5>
+      </div>
+      <div class="card-body p-0">
+        {% if income_cats %}
+          <ul class="list-group list-group-flush">
+            {% for cat in income_cats %}
+              <li class="list-group-item d-flex justify-content-between align-items-center px-4 py-3">
+                <span>{{ cat.name }}</span>
+                <div class="btn-group btn-group-sm">
+                  <a href="{% url 'category_edit' cat.pk %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                  <a href="{% url 'category_delete' cat.pk %}" class="btn btn-outline-danger">
+                    <i class="bi bi-trash"></i>
+                  </a>
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted text-center py-4 mb-0">No income categories yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Expense Categories -->
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-danger bg-opacity-10 border-0 py-3">
+        <h5 class="mb-0 fw-semibold text-danger">
+          <i class="bi bi-arrow-down-circle me-2"></i>Expense ({{ expense_cats.count }})
+        </h5>
+      </div>
+      <div class="card-body p-0">
+        {% if expense_cats %}
+          <ul class="list-group list-group-flush">
+            {% for cat in expense_cats %}
+              <li class="list-group-item d-flex justify-content-between align-items-center px-4 py-3">
+                <span>{{ cat.name }}</span>
+                <div class="btn-group btn-group-sm">
+                  <a href="{% url 'category_edit' cat.pk %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                  <a href="{% url 'category_delete' cat.pk %}" class="btn btn-outline-danger">
+                    <i class="bi bi-trash"></i>
+                  </a>
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted text-center py-4 mb-0">No expense categories yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

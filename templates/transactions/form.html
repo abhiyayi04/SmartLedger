@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ action }} Transaction — SmartLedger{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7 col-lg-6">
+    <div class="card border-0 shadow-sm mt-2">
+      <div class="card-body p-4">
+        <div class="d-flex align-items-center mb-4">
+          <a href="{% url 'transaction_list' %}" class="btn btn-sm btn-outline-secondary me-3">
+            <i class="bi bi-arrow-left"></i>
+          </a>
+          <h4 class="fw-bold mb-0">{{ action }} Transaction</h4>
+        </div>
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <div class="row g-3">
+
+            <div class="col-md-6">
+              <label for="{{ form.date.id_for_label }}" class="form-label">Date</label>
+              <input type="date" name="date" id="{{ form.date.id_for_label }}"
+                     class="form-control {% if form.date.errors %}is-invalid{% endif %}"
+                     value="{{ form.date.value|date:'Y-m-d'|default:'' }}">
+              {% for e in form.date.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              <label for="{{ form.amount.id_for_label }}" class="form-label">Amount (USD)</label>
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input type="number" name="amount" id="{{ form.amount.id_for_label }}"
+                       step="0.01" min="0.01" placeholder="0.00"
+                       class="form-control {% if form.amount.errors %}is-invalid{% endif %}"
+                       value="{{ form.amount.value|default:'' }}">
+                {% for e in form.amount.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+              </div>
+            </div>
+
+            <div class="col-12">
+              <label for="{{ form.description.id_for_label }}" class="form-label">Description</label>
+              <input type="text" name="description" id="{{ form.description.id_for_label }}"
+                     class="form-control {% if form.description.errors %}is-invalid{% endif %}"
+                     value="{{ form.description.value|default:'' }}">
+              {% for e in form.description.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              <label for="{{ form.vendor.id_for_label }}" class="form-label">Vendor <span class="text-muted small">(optional)</span></label>
+              <input type="text" name="vendor" id="{{ form.vendor.id_for_label }}"
+                     class="form-control {% if form.vendor.errors %}is-invalid{% endif %}"
+                     value="{{ form.vendor.value|default:'' }}">
+              {% for e in form.vendor.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              <label for="{{ form.transaction_type.id_for_label }}" class="form-label">Type</label>
+              <select name="transaction_type" id="{{ form.transaction_type.id_for_label }}"
+                      class="form-select {% if form.transaction_type.errors %}is-invalid{% endif %}">
+                {% for value, label in form.transaction_type.field.choices %}
+                  <option value="{{ value }}" {% if form.transaction_type.value == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              {% for e in form.transaction_type.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              <label for="{{ form.status.id_for_label }}" class="form-label">Status</label>
+              <select name="status" id="{{ form.status.id_for_label }}"
+                      class="form-select {% if form.status.errors %}is-invalid{% endif %}">
+                {% for value, label in form.status.field.choices %}
+                  <option value="{{ value }}" {% if form.status.value == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              {% for e in form.status.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              <label for="{{ form.category.id_for_label }}" class="form-label">
+                Category
+                <!-- "Suggest Category" button added in Step 5 -->
+              </label>
+              <select name="category" id="{{ form.category.id_for_label }}"
+                      class="form-select {% if form.category.errors %}is-invalid{% endif %}">
+                <option value="">— Uncategorized —</option>
+                {% for cat in form.category.field.queryset %}
+                  <option value="{{ cat.pk }}" {% if form.category.value|stringformat:"s" == cat.pk|stringformat:"s" %}selected{% endif %}>
+                    {{ cat.name }} ({{ cat.get_type_display }})
+                  </option>
+                {% endfor %}
+              </select>
+              {% for e in form.category.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+            </div>
+
+          </div>
+
+          <div class="d-grid mt-4">
+            <button type="submit" class="btn btn-dark">
+              {% if action == 'Add' %}Add Transaction{% else %}Save Changes{% endif %}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

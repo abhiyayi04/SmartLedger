@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard — SmartLedger{% endblock %}
+
+{% block content %}
+<!-- Header + date filter -->
+<div class="d-flex flex-wrap justify-content-between align-items-end mb-4 gap-3">
+  <h2 class="fw-bold mb-0">Dashboard</h2>
+  <form method="get" class="d-flex align-items-end gap-2 flex-wrap">
+    <div>
+      <label class="form-label small mb-1">From</label>
+      <input type="date" name="date_from" class="form-control form-control-sm" value="{{ date_from }}">
+    </div>
+    <div>
+      <label class="form-label small mb-1">To</label>
+      <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to }}">
+    </div>
+    <button type="submit" class="btn btn-dark btn-sm">Apply</button>
+    {% if date_from or date_to %}
+      <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm">Clear</a>
+    {% endif %}
+    <a href="{% url 'export_csv' %}{% if date_from or date_to %}?date_from={{ date_from }}&date_to={{ date_to }}{% endif %}"
+       class="btn btn-outline-dark btn-sm">
+      <i class="bi bi-download me-1"></i>Export CSV
+    </a>
+  </form>
+</div>
+
+<!-- Uncategorized alert -->
+{% if uncategorized_count %}
+  <div class="alert alert-warning d-flex align-items-center mb-4" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <span>
+      <strong>{{ uncategorized_count }} transaction{{ uncategorized_count|pluralize }}</strong>
+      without a category.
+      <a href="{% url 'transaction_list' %}" class="alert-link ms-1">Review now →</a>
+    </span>
+  </div>
+{% endif %}
+
+<!-- KPI Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body d-flex align-items-center gap-3 p-4">
+        <div class="rounded-circle bg-success bg-opacity-10 p-3">
+          <i class="bi bi-arrow-up-circle-fill fs-4 text-success"></i>
+        </div>
+        <div>
+          <p class="text-muted small mb-1">Total Income</p>
+          <h4 class="fw-bold mb-0 text-success">${{ income_total|floatformat:2 }}</h4>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body d-flex align-items-center gap-3 p-4">
+        <div class="rounded-circle bg-danger bg-opacity-10 p-3">
+          <i class="bi bi-arrow-down-circle-fill fs-4 text-danger"></i>
+        </div>
+        <div>
+          <p class="text-muted small mb-1">Total Expenses</p>
+          <h4 class="fw-bold mb-0 text-danger">${{ expense_total|floatformat:2 }}</h4>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body d-flex align-items-center gap-3 p-4">
+        <div class="rounded-circle bg-primary bg-opacity-10 p-3">
+          <i class="bi bi-wallet2 fs-4 text-primary"></i>
+        </div>
+        <div>
+          <p class="text-muted small mb-1">Net Cash Flow</p>
+          <h4 class="fw-bold mb-0 {% if net_cash_flow >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {% if net_cash_flow < 0 %}−${{ net_cash_flow|floatformat:2|slice:"1:" }}{% else %}${{ net_cash_flow|floatformat:2 }}{% endif %}
+          </h4>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts row -->
+<div class="row g-3 mb-4">
+  <div class="col-md-5">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h6 class="fw-semibold mb-0">Expenses by Category</h6>
+      </div>
+      <div class="card-body d-flex align-items-center justify-content-center" style="min-height:260px">
+        <canvas id="categoryChart" style="max-height:240px"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h6 class="fw-semibold mb-0">Monthly Income vs Expenses</h6>
+      </div>
+      <div class="card-body" style="min-height:260px">
+        <canvas id="monthlyChart" style="max-height:240px"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Vendors + Recent transactions -->
+<div class="row g-3 mb-4">
+  <div class="col-md-5">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h6 class="fw-semibold mb-0">Top Vendors by Spend</h6>
+      </div>
+      <div class="card-body d-flex align-items-center" style="min-height:220px">
+        <canvas id="vendorChart" style="max-height:200px; width:100%"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
+        <h6 class="fw-semibold mb-0">Recent Transactions</h6>
+        <a href="{% url 'transaction_list' %}" class="small text-decoration-none">View all →</a>
+      </div>
+      <div class="card-body p-0">
+        {% if recent_transactions %}
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+              <tbody>
+                {% for t in recent_transactions %}
+                  <tr>
+                    <td class="ps-3 text-muted small text-nowrap">{{ t.date }}</td>
+                    <td>
+                      <div class="small fw-semibold">{{ t.description|truncatechars:35 }}</div>
+                      <div class="text-muted" style="font-size:0.75rem">{{ t.vendor|default:"" }}</div>
+                    </td>
+                    <td>
+                      {% if t.category %}
+                        <span class="badge bg-secondary-subtle text-secondary border" style="font-size:0.7rem">{{ t.category.name }}</span>
+                      {% else %}
+                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="font-size:0.7rem">Uncategorized</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-end pe-3 fw-semibold small text-nowrap {% if t.transaction_type == 'income' %}text-success{% else %}text-danger{% endif %}">
+                      {% if t.transaction_type == 'expense' %}−{% endif %}${{ t.amount }}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-inbox"></i> No transactions yet.
+            <div class="mt-2">
+              <a href="{% url 'transaction_add' %}" class="btn btn-sm btn-dark me-1">Add one</a>
+              <a href="{% url 'csv_upload' %}" class="btn btn-sm btn-outline-dark">Import CSV</a>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{{ chart_data|json_script:"chart-data" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+  const chartData = JSON.parse(document.getElementById('chart-data').textContent);
+  const COLOURS = [
+    '#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
+    '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'
+  ];
+
+  // Expense by category — doughnut
+  const catCtx = document.getElementById('categoryChart');
+  if (chartData.category_pie.labels.length) {
+    new Chart(catCtx, {
+      type: 'doughnut',
+      data: {
+        labels: chartData.category_pie.labels,
+        datasets: [{ data: chartData.category_pie.data,
+          backgroundColor: COLOURS.slice(0, chartData.category_pie.labels.length), borderWidth: 1 }]
+      },
+      options: {
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+        cutout: '60%',
+      }
+    });
+  } else {
+    catCtx.closest('.card-body').innerHTML = '<p class="text-muted text-center small py-4 mb-0">No categorized expenses yet.</p>';
+  }
+
+  // Monthly income vs expense — grouped bar
+  const monthCtx = document.getElementById('monthlyChart');
+  if (chartData.monthly.labels.length) {
+    new Chart(monthCtx, {
+      type: 'bar',
+      data: {
+        labels: chartData.monthly.labels,
+        datasets: [
+          { label: 'Income', data: chartData.monthly.income,
+            backgroundColor: 'rgba(25,135,84,0.75)', borderRadius: 3 },
+          { label: 'Expenses', data: chartData.monthly.expense,
+            backgroundColor: 'rgba(220,53,69,0.75)', borderRadius: 3 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+        scales: { y: { beginAtZero: true, ticks: { callback: v => '$' + v.toLocaleString() } } }
+      }
+    });
+  } else {
+    monthCtx.closest('.card-body').innerHTML = '<p class="text-muted text-center small py-4 mb-0">No data yet.</p>';
+  }
+
+  // Top vendors — horizontal bar
+  const vendorCtx = document.getElementById('vendorChart');
+  if (chartData.vendors.labels.length) {
+    new Chart(vendorCtx, {
+      type: 'bar',
+      data: {
+        labels: chartData.vendors.labels,
+        datasets: [{ label: 'Total Spend', data: chartData.vendors.data,
+          backgroundColor: COLOURS.slice(0, chartData.vendors.labels.length), borderRadius: 3 }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ticks: { callback: v => '$' + v.toLocaleString() } } }
+      }
+    });
+  } else {
+    vendorCtx.closest('.card-body').innerHTML = '<p class="text-muted text-center small py-4 mb-0">No vendor data yet.</p>';
+  }
+</script>
+{% endblock %}

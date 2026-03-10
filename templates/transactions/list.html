@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+
+{% block title %}Transactions — SmartLedger{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="fw-bold mb-0">Transactions</h2>
+  <div class="d-flex gap-2">
+    <a href="{% url 'export_csv' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-dark">
+      <i class="bi bi-download me-1"></i>Export CSV
+    </a>
+    <a href="{% url 'csv_upload' %}" class="btn btn-outline-dark">
+      <i class="bi bi-upload me-1"></i>Import CSV
+    </a>
+    <a href="{% url 'transaction_add' %}" class="btn btn-dark">
+      <i class="bi bi-plus-lg me-1"></i>Add
+    </a>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label small mb-1">From</label>
+        <input type="date" name="date_from" class="form-control form-control-sm"
+               value="{{ filter_form.date_from.value|default:'' }}">
+      </div>
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label small mb-1">To</label>
+        <input type="date" name="date_to" class="form-control form-control-sm"
+               value="{{ filter_form.date_to.value|default:'' }}">
+      </div>
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label small mb-1">Category</label>
+        <select name="category" class="form-select form-select-sm">
+          <option value="">All Categories</option>
+          {% for cat in filter_form.fields.category.queryset %}
+            <option value="{{ cat.pk }}" {% if filter_form.category.value|stringformat:"s" == cat.pk|stringformat:"s" %}selected{% endif %}>
+              {{ cat.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label small mb-1">Type</label>
+        <select name="type" class="form-select form-select-sm">
+          <option value="">All Types</option>
+          <option value="income" {% if filter_form.type.value == "income" %}selected{% endif %}>Income</option>
+          <option value="expense" {% if filter_form.type.value == "expense" %}selected{% endif %}>Expense</option>
+        </select>
+      </div>
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label small mb-1">Status</label>
+        <select name="status" class="form-select form-select-sm">
+          <option value="">All Statuses</option>
+          <option value="pending" {% if filter_form.status.value == "pending" %}selected{% endif %}>Pending</option>
+          <option value="cleared" {% if filter_form.status.value == "cleared" %}selected{% endif %}>Cleared</option>
+        </select>
+      </div>
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label small mb-1">Sort</label>
+        <select name="sort" class="form-select form-select-sm">
+          <option value="-date" {% if filter_form.sort.value == "-date" or not filter_form.sort.value %}selected{% endif %}>Date (newest)</option>
+          <option value="date" {% if filter_form.sort.value == "date" %}selected{% endif %}>Date (oldest)</option>
+          <option value="-amount" {% if filter_form.sort.value == "-amount" %}selected{% endif %}>Amount (high)</option>
+          <option value="amount" {% if filter_form.sort.value == "amount" %}selected{% endif %}>Amount (low)</option>
+          <option value="category__name" {% if filter_form.sort.value == "category__name" %}selected{% endif %}>Category</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-auto">
+        <label class="form-label small mb-1">Vendor</label>
+        <input type="text" name="vendor" class="form-control form-control-sm"
+               placeholder="Search vendor..." value="{{ filter_form.vendor.value|default:'' }}">
+      </div>
+      <div class="col-auto d-flex gap-1 align-items-end">
+        <button type="submit" class="btn btn-dark btn-sm">Filter</button>
+        <a href="{% url 'transaction_list' %}" class="btn btn-outline-secondary btn-sm">Clear</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    {% if transactions %}
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-4">Date</th>
+              <th>Description</th>
+              <th>Vendor</th>
+              <th>Category</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th class="text-end">Amount</th>
+              <th class="text-end pe-4">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in transactions %}
+              <tr>
+                <td class="ps-4 text-nowrap">{{ t.date }}</td>
+                <td>{{ t.description }}</td>
+                <td class="text-muted small">{{ t.vendor|default:"—" }}</td>
+                <td>
+                  {% if t.category %}
+                    <span class="badge bg-secondary">{{ t.category.name }}</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark">Uncategorized</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if t.transaction_type == 'income' %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">Income</span>
+                  {% else %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Expense</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if t.status == 'cleared' %}
+                    <span class="badge bg-light text-secondary border">Cleared</span>
+                  {% else %}
+                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">Pending</span>
+                  {% endif %}
+                </td>
+                <td class="text-end fw-semibold {% if t.transaction_type == 'income' %}text-success{% else %}text-danger{% endif %}">
+                  {% if t.transaction_type == 'expense' %}−{% endif %}${{ t.amount }}
+                </td>
+                <td class="text-end pe-4">
+                  <div class="btn-group btn-group-sm">
+                    <a href="{% url 'transaction_edit' t.pk %}" class="btn btn-outline-secondary">
+                      <i class="bi bi-pencil"></i>
+                    </a>
+                    <a href="{% url 'transaction_delete' t.pk %}" class="btn btn-outline-danger">
+                      <i class="bi bi-trash"></i>
+                    </a>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="px-4 py-2 text-muted small border-top">
+        {{ total_count }} transaction{{ total_count|pluralize }}
+      </div>
+    {% else %}
+      <div class="text-center py-5 text-muted">
+        <i class="bi bi-inbox fs-1"></i>
+        <p class="mt-2">No transactions found.</p>
+        <a href="{% url 'transaction_add' %}" class="btn btn-dark btn-sm me-2">Add manually</a>
+        <a href="{% url 'csv_upload' %}" class="btn btn-outline-dark btn-sm">Import CSV</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

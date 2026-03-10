@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block title %}SmartLedger — Financial Analytics{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+  <div class="col-md-8 text-center">
+    <i class="bi bi-journal-richtext display-1 text-dark"></i>
+    <h1 class="mt-3 fw-bold">SmartLedger</h1>
+    <p class="lead text-muted mt-3">
+      Track your income and expenses, import transactions from CSV,
+      get AI-powered category suggestions, and visualize your financial health.
+    </p>
+    <div class="mt-4 d-flex gap-3 justify-content-center">
+      {% if user.is_authenticated %}
+        <a href="{% url 'dashboard' %}" class="btn btn-dark btn-lg">
+          <i class="bi bi-speedometer2 me-2"></i>Go to Dashboard
+        </a>
+      {% else %}
+        <a href="{% url 'register' %}" class="btn btn-dark btn-lg">
+          <i class="bi bi-person-plus me-2"></i>Get Started
+        </a>
+        <a href="{% url 'login' %}" class="btn btn-outline-dark btn-lg">
+          <i class="bi bi-box-arrow-in-right me-2"></i>Login
+        </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="row mt-5 g-4">
+  <div class="col-md-4">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body text-center p-4">
+        <i class="bi bi-upload fs-1 text-primary"></i>
+        <h5 class="mt-3">Import Transactions</h5>
+        <p class="text-muted">Upload CSV files from your bank or accounting software and import transactions in bulk.</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body text-center p-4">
+        <i class="bi bi-robot fs-1 text-success"></i>
+        <h5 class="mt-3">AI Categorization</h5>
+        <p class="text-muted">Let AI suggest categories for your transactions based on descriptions. Review and confirm with one click.</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body text-center p-4">
+        <i class="bi bi-bar-chart-line fs-1 text-warning"></i>
+        <h5 class="mt-3">Financial Insights</h5>
+        <p class="text-muted">Visualize spending trends, category breakdowns, and top vendors with interactive charts.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

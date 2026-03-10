@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% block title %}CSV Preview — SmartLedger{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <a href="{% url 'csv_upload' %}" class="btn btn-sm btn-outline-secondary me-3">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="fw-bold mb-0">Review Import</h4>
+</div>
+
+<!-- Summary badges -->
+<div class="d-flex gap-2 mb-3 flex-wrap">
+  <span class="badge bg-success fs-6">{{ valid_count }} ready to import</span>
+  {% if duplicate_count %}
+    <span class="badge bg-warning text-dark fs-6">{{ duplicate_count }} duplicate{{ duplicate_count|pluralize }}</span>
+  {% endif %}
+  {% if error_count %}
+    <span class="badge bg-danger fs-6">{{ error_count }} error{{ error_count|pluralize }}</span>
+  {% endif %}
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">
+                <input type="checkbox" id="select-all" class="form-check-input">
+              </th>
+              <th>#</th>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Vendor</th>
+              <th>Type</th>
+              <th class="text-end">Amount</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr class="{% if row.errors %}table-danger{% elif row.is_duplicate %}table-warning{% endif %}">
+                <td class="ps-3">
+                  {% if not row.errors %}
+                    <input type="checkbox" name="selected_rows" value="{{ forloop.counter0 }}"
+                           class="form-check-input row-check"
+                           {% if not row.is_duplicate %}checked{% endif %}>
+                  {% else %}
+                    <i class="bi bi-x-circle text-danger"></i>
+                  {% endif %}
+                </td>
+                <td class="text-muted small">{{ row.row_num }}</td>
+                <td class="text-nowrap">{{ row.date|default:row.date_str }}</td>
+                <td>{{ row.description }}</td>
+                <td class="text-muted small">{{ row.vendor|default:"—" }}</td>
+                <td>
+                  {% if row.transaction_type == 'income' %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">Income</span>
+                  {% elif row.transaction_type == 'expense' %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Expense</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td class="text-end">
+                  {% if row.amount %}${{ row.amount }}{% else %}{{ row.amount_str }}{% endif %}
+                </td>
+                <td>
+                  {% if row.errors %}
+                    <span class="badge bg-danger" title="{{ row.errors|join:', ' }}">Error</span>
+                  {% elif row.is_duplicate %}
+                    <span class="badge bg-warning text-dark">Duplicate</span>
+                  {% else %}
+                    <span class="badge bg-success">OK</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% if row.errors %}
+                <tr class="table-danger">
+                  <td colspan="8" class="ps-3 small text-danger fst-italic">
+                    {% for e in row.errors %}{{ e }}{% if not forloop.last %} · {% endif %}{% endfor %}
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-dark">
+      <i class="bi bi-check2-all me-1"></i>Import Selected
+    </button>
+    <a href="{% url 'csv_upload' %}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+
+<script>
+  document.getElementById('select-all').addEventListener('change', function () {
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+  });
+</script>
+{% endblock %}

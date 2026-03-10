@@ -1,0 +1,5 @@
+Django==5.2.11
+djangorestframework==3.16.1
+mysqlclient==2.2.8
+openai==1.75.0
+python-dotenv==1.0.1
