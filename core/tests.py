@@ -1,9 +1,12 @@
+import datetime
 from decimal import Decimal
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.contrib.auth.models import User
 from django.urls import reverse
 
 from .models import Category, Transaction
+from .forms import TransactionForm
 from .services.csv_service import detect_duplicates
 
 
@@ -209,3 +212,166 @@ class CategoryAssignmentTests(TestCase):
         self.assertIn('Revenue', names)
         self.assertIn('Software', names)
         self.assertIn('Travel', names)
+
+
+# ---------------------------------------------------------------------------
+# 4. TransactionForm domain integrity
+# ---------------------------------------------------------------------------
+
+class TransactionFormValidationTests(TestCase):
+    def setUp(self):
+        self.user = make_user()
+        self.other = make_user('other')
+        # Signal seeds default categories; use get_or_create to avoid duplicate-key errors
+        self.income_cat, _ = Category.objects.get_or_create(user=self.user, name='Revenue', defaults={'type': Category.INCOME})
+        self.expense_cat, _ = Category.objects.get_or_create(user=self.user, name='Software', defaults={'type': Category.EXPENSE})
+        self.other_cat, _ = Category.objects.get_or_create(user=self.other, name='Other', defaults={'type': Category.EXPENSE})
+
+    def _post_data(self, **overrides):
+        data = {
+            'date': '2024-01-15',
+            'description': 'Test',
+            'amount': '100.00',
+            'vendor': 'ACME',
+            'transaction_type': Transaction.EXPENSE,
+            'status': Transaction.PENDING,
+            'category': self.expense_cat.pk,
+        }
+        data.update(overrides)
+        return data
+
+    def test_matching_type_is_valid(self):
+        form = TransactionForm(self._post_data(), user=self.user)
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_mismatched_type_invalid(self):
+        """Income category chosen for an expense transaction — should fail."""
+        form = TransactionForm(
+            self._post_data(transaction_type=Transaction.INCOME, category=self.expense_cat.pk),
+            user=self.user,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('category', form.errors)
+
+    def test_other_users_category_invalid(self):
+        """Category belonging to a different user should be rejected."""
+        form = TransactionForm(
+            self._post_data(category=self.other_cat.pk),
+            user=self.user,
+        )
+        # ModelChoiceField won't even include other_cat in the queryset,
+        # so it raises an invalid-choice validation error.
+        self.assertFalse(form.is_valid())
+
+    def test_no_category_is_valid(self):
+        """Category is optional — omitting it must be accepted."""
+        form = TransactionForm(self._post_data(category=''), user=self.user)
+        self.assertTrue(form.is_valid(), form.errors)
+
+
+# ---------------------------------------------------------------------------
+# 5. Transaction model-level clean() validation
+# ---------------------------------------------------------------------------
+
+class TransactionModelValidationTests(TestCase):
+    def setUp(self):
+        self.user = make_user()
+        self.other = make_user('other')
+        self.expense_cat, _ = Category.objects.get_or_create(user=self.user, name='Software', defaults={'type': Category.EXPENSE})
+        self.income_cat, _ = Category.objects.get_or_create(user=self.user, name='Revenue', defaults={'type': Category.INCOME})
+        self.other_cat, _ = Category.objects.get_or_create(user=self.other, name='Other', defaults={'type': Category.EXPENSE})
+
+    def _txn(self, **kwargs):
+        defaults = dict(
+            date='2024-01-15',
+            description='Test',
+            amount=Decimal('50.00'),
+            transaction_type=Transaction.EXPENSE,
+            status=Transaction.PENDING,
+        )
+        defaults.update(kwargs)
+        t = Transaction(user=self.user, **defaults)
+        return t
+
+    def test_matching_category_passes(self):
+        t = self._txn(category=self.expense_cat)
+        t.clean()  # should not raise
+
+    def test_mismatched_category_type_raises(self):
+        t = self._txn(category=self.income_cat)
+        with self.assertRaises(ValidationError) as cm:
+            t.clean()
+        self.assertIn('category', cm.exception.message_dict)
+
+    def test_other_users_category_raises(self):
+        t = self._txn(category=self.other_cat)
+        with self.assertRaises(ValidationError) as cm:
+            t.clean()
+        self.assertIn('category', cm.exception.message_dict)
+
+    def test_mismatched_ai_suggested_category_raises(self):
+        t = self._txn(ai_suggested_category=self.income_cat)
+        with self.assertRaises(ValidationError) as cm:
+            t.clean()
+        self.assertIn('ai_suggested_category', cm.exception.message_dict)
+
+    def test_other_users_ai_suggested_category_raises(self):
+        t = self._txn(ai_suggested_category=self.other_cat)
+        with self.assertRaises(ValidationError) as cm:
+            t.clean()
+        self.assertIn('ai_suggested_category', cm.exception.message_dict)
+
+
+# ---------------------------------------------------------------------------
+# 6. Duplicate detection — normalization and intra-CSV detection
+# ---------------------------------------------------------------------------
+
+class DuplicateDetectionNormalizationTests(TestCase):
+    def setUp(self):
+        self.user = make_user()
+        make_transaction(
+            self.user,
+            date='2024-01-15',
+            description='AWS  Invoice',   # double space in DB
+            amount=Decimal('120.00'),
+        )
+
+    def _row(self, description, date='2024-01-15', amount='120.00'):
+        return {
+            'date': datetime.date.fromisoformat(date),
+            'description': description,
+            'amount': Decimal(amount),
+            'transaction_type': Transaction.EXPENSE,
+            'errors': [],
+            'is_duplicate': False,
+            'row_num': 2,
+        }
+
+    def test_normalized_match_flagged(self):
+        """Single-space vs double-space description should still match."""
+        rows = [self._row('AWS Invoice')]  # single space
+        result = detect_duplicates(rows, self.user)
+        self.assertTrue(result[0]['is_duplicate'])
+
+    def test_case_insensitive_match(self):
+        rows = [self._row('aws invoice')]
+        result = detect_duplicates(rows, self.user)
+        self.assertTrue(result[0]['is_duplicate'])
+
+    def test_intra_csv_first_row_not_duplicate(self):
+        rows = [
+            self._row('New Transaction'),
+            self._row('New Transaction'),
+        ]
+        result = detect_duplicates(rows, self.user)
+        self.assertFalse(result[0]['is_duplicate'])  # first occurrence is new
+        self.assertTrue(result[1]['is_duplicate'])   # second is intra-CSV duplicate
+
+    def test_intra_csv_different_amounts_not_duplicate(self):
+        rows = [
+            self._row('New Transaction', amount='50.00'),
+            self._row('New Transaction', amount='75.00'),
+        ]
+        result = detect_duplicates(rows, self.user)
+        self.assertFalse(result[0]['is_duplicate'])
+        self.assertFalse(result[1]['is_duplicate'])
