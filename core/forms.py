@@ -81,6 +81,15 @@ class CSVUploadForm(forms.Form):
         return f
 
 
+class DashboardFilterForm(forms.Form):
+    date_from = forms.DateField(
+        required=False, widget=forms.DateInput(attrs={'type': 'date'})
+    )
+    date_to = forms.DateField(
+        required=False, widget=forms.DateInput(attrs={'type': 'date'})
+    )
+
+
 class TransactionFilterForm(forms.Form):
     date_from = forms.DateField(
         required=False, widget=forms.DateInput(attrs={'type': 'date'})

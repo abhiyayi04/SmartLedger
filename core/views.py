@@ -10,12 +10,11 @@ from django.http import HttpResponse
 from collections import OrderedDict
 from decimal import Decimal
 import csv as csv_module
-import datetime
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm
+from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm, DashboardFilterForm
 from .models import Category, Transaction
 
 
@@ -53,16 +52,12 @@ def profile_edit(request):
 
 @login_required
 def dashboard(request):
-    def parse_date(val):
-        try:
-            return datetime.date.fromisoformat(val) if val else None
-        except ValueError:
-            return None
-
-    date_from_raw = request.GET.get('date_from', '').strip()
-    date_to_raw = request.GET.get('date_to', '').strip()
-    date_from = parse_date(date_from_raw)
-    date_to = parse_date(date_to_raw)
+    filter_form = DashboardFilterForm(request.GET or None)
+    date_from = None
+    date_to = None
+    if filter_form.is_valid():
+        date_from = filter_form.cleaned_data.get('date_from')
+        date_to = filter_form.cleaned_data.get('date_to')
 
     qs = Transaction.objects.filter(user=request.user)
     if date_from:
