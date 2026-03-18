@@ -11,7 +11,9 @@ from collections import OrderedDict
 from decimal import Decimal
 import csv as csv_module
 import datetime
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm
 from .models import Category, Transaction
@@ -341,6 +343,8 @@ def category_delete(request, pk):
 
 
 @api_view(['POST'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 def api_suggest_category(request):
     description = request.data.get('description', '').strip()
     vendor = request.data.get('vendor', '').strip()
@@ -361,6 +365,8 @@ def api_suggest_category(request):
 
 
 @api_view(['POST'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 def api_batch_suggest(request):
     rows = request.data.get('rows', [])
 
@@ -381,6 +387,8 @@ def api_batch_suggest(request):
 
 
 @api_view(['POST'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 def api_suggest_uncategorized(request):
     """
     Run AI suggestions on all transactions for this user that have no category
@@ -414,6 +422,8 @@ def api_suggest_uncategorized(request):
 
 
 @api_view(['POST'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 def api_suggest_for_transaction(request, pk):
     """Run AI suggestion for a single existing transaction and save it to the DB."""
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
@@ -438,6 +448,8 @@ def api_suggest_for_transaction(request, pk):
 
 
 @api_view(['POST'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 def api_accept_suggestion(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
 
