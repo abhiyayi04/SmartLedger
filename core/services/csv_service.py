@@ -1,11 +1,17 @@
 import csv
 import io
+import re
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
 
 DATE_FORMATS = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%m-%d-%Y']
 REQUIRED_HEADERS = {'Date', 'Description', 'Amount', 'Vendor'}
+
+
+def _normalize_description(text):
+    """Lowercase, strip, and collapse repeated whitespace for comparison."""
+    return re.sub(r'\s+', ' ', (text or '').strip().lower())
 
 
 def parse_csv(file):
@@ -77,19 +83,29 @@ def parse_csv(file):
 
 def detect_duplicates(rows, user):
     """
-    Mark rows as duplicate if a transaction with the same date + amount + description
-    already exists for this user.
+    Mark rows as duplicate if:
+    - a transaction with the same (date, amount, normalized_description) already
+      exists for this user in the database, OR
+    - an earlier row in this CSV upload has the same (date, amount, normalized_description).
     """
     from core.models import Transaction
 
-    existing = set(
+    # Build a set of (date, amount, normalized_description) from the DB
+    existing = {
+        (date, amount, _normalize_description(description))
+        for date, amount, description in
         Transaction.objects.filter(user=user).values_list('date', 'amount', 'description')
-    )
+    }
+
+    seen_in_csv = set()
 
     for row in rows:
         if not row['errors'] and row['date'] and row['amount'] is not None:
-            key = (row['date'], row['amount'], row['description'])
-            row['is_duplicate'] = key in existing
+            key = (row['date'], row['amount'], _normalize_description(row['description']))
+            if key in existing or key in seen_in_csv:
+                row['is_duplicate'] = True
+            else:
+                seen_in_csv.add(key)
 
     return rows
 
