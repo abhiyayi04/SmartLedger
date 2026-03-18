@@ -15,7 +15,8 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm, DashboardFilterForm
-from .models import Category, Transaction
+from .models import AuditLog, Category, Transaction
+from .utils import audit
 
 
 def homepage(request):
@@ -240,7 +241,9 @@ def transaction_edit(request, pk):
     if request.method == 'POST':
         form = TransactionForm(request.POST, instance=transaction, user=request.user)
         if form.is_valid():
-            form.save()
+            t = form.save()
+            audit(request.user, AuditLog.EDIT, transaction=t,
+                  metadata={'description': t.description, 'amount': str(t.amount)})
             messages.success(request, 'Transaction updated.')
             return redirect('transaction_list')
     else:
@@ -254,6 +257,8 @@ def transaction_edit(request, pk):
 def transaction_delete(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
     if request.method == 'POST':
+        audit(request.user, AuditLog.DELETE,
+              metadata={'description': transaction.description, 'amount': str(transaction.amount), 'date': str(transaction.date)})
         transaction.delete()
         messages.success(request, 'Transaction deleted.')
         return redirect('transaction_list')
@@ -286,6 +291,10 @@ def csv_upload(request):
                 if to_import:
                     with db_transaction.atomic():
                         Transaction.objects.bulk_create(to_import)
+                    audit(request.user, AuditLog.IMPORT, metadata={
+                        'filename': request.FILES['file'].name,
+                        'imported_count': len(to_import),
+                    })
                 parts = [f'Imported {len(to_import)} transaction(s).']
                 if duplicate_count:
                     parts.append(f'Skipped {duplicate_count} duplicate(s).')
@@ -478,5 +487,8 @@ def api_accept_suggestion(request, pk):
 
     transaction.category = transaction.ai_suggested_category
     transaction.save(update_fields=['category'])
+
+    audit(request.user, AuditLog.AI_ACCEPTED, transaction=transaction,
+          metadata={'category': transaction.category.name})
 
     return Response({'category_name': transaction.category.name})

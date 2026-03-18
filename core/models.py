@@ -97,3 +97,36 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f"{self.date} | {self.description} | ${self.amount}"
+
+
+class AuditLog(models.Model):
+    IMPORT = 'import'
+    EDIT = 'edit'
+    DELETE = 'delete'
+    AI_ACCEPTED = 'ai_accepted'
+    ACTION_CHOICES = [
+        (IMPORT, 'Imported'),
+        (EDIT, 'Edited'),
+        (DELETE, 'Deleted'),
+        (AI_ACCEPTED, 'AI Suggestion Accepted'),
+    ]
+
+    user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name='audit_logs'
+    )
+    transaction = models.ForeignKey(
+        Transaction, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='audit_logs'
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.get_action_display()} by {self.user_id} at {self.created_at}"
