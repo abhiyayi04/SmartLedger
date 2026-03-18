@@ -19,6 +19,9 @@ class Category(models.Model):
     class Meta:
         ordering = ['type', 'name']
         unique_together = ['user', 'name']
+        indexes = [
+            models.Index(fields=['user', 'type']),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.get_type_display()})"
@@ -59,6 +62,12 @@ class Transaction(models.Model):
 
     class Meta:
         ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['user', 'date']),
+            models.Index(fields=['user', 'category']),
+            models.Index(fields=['user', 'transaction_type']),
+            models.Index(fields=['user', 'status']),
+        ]
 
     def clean(self):
         errors = {}
