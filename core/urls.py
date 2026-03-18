@@ -11,6 +11,7 @@ urlpatterns = [
     path('transactions/add/', views.transaction_add, name='transaction_add'),
     path('transactions/<int:pk>/edit/', views.transaction_edit, name='transaction_edit'),
     path('transactions/<int:pk>/delete/', views.transaction_delete, name='transaction_delete'),
+    path('transactions/batch-accept-suggestions/', views.batch_accept_suggestions, name='batch_accept_suggestions'),
     path('transactions/upload/', views.csv_upload, name='csv_upload'),
     path('transactions/export/', views.export_csv, name='export_csv'),
     path('transactions/imports/', views.import_history_list, name='import_history_list'),

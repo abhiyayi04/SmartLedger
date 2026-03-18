@@ -231,8 +231,11 @@ def transaction_add(request):
 
 
 def _safe_back(url):
-    """Return url if it looks like a safe local path, else ''."""
-    return url if url and url.startswith('/') else ''
+    """Return url only if it is a safe local path (starts with '/' but not '//').
+    Rejects protocol-relative URLs like //evil.com which would be off-site redirects."""
+    if url and url.startswith('/') and not url.startswith('//'):
+        return url
+    return ''
 
 
 @login_required
@@ -384,6 +387,49 @@ def category_delete(request, pk):
         messages.success(request, f'Category "{name}" deleted.')
         return redirect('category_list')
     return render(request, 'categories/confirm_delete.html', {'category': category})
+
+
+@login_required
+def batch_accept_suggestions(request):
+    """
+    Bulk-accept all AI suggestions for the current user where:
+      - category is null
+      - ai_suggested_category is not null
+    Does NOT generate new suggestions. Does NOT overwrite existing categories.
+    """
+    if request.method != 'POST':
+        return redirect('transaction_list')
+
+    back = _safe_back(request.POST.get('back', ''))
+
+    eligible = list(
+        Transaction.objects.filter(
+            user=request.user,
+            category__isnull=True,
+            ai_suggested_category__isnull=False,
+        ).select_related('ai_suggested_category')
+    )
+
+    count = len(eligible)
+    if count:
+        ids = [t.pk for t in eligible]
+        # Bulk update: set category_id = ai_suggested_category_id for each row
+        for t in eligible:
+            Transaction.objects.filter(pk=t.pk).update(category_id=t.ai_suggested_category_id)
+
+        audit(request.user, AuditLog.AI_ACCEPTED, metadata={
+            'batch': True,
+            'count': count,
+            'transaction_ids': ids,
+        })
+        messages.success(
+            request,
+            f'Accepted {count} AI suggestion{"s" if count != 1 else ""}.',
+        )
+    else:
+        messages.info(request, 'No pending AI suggestions to accept.')
+
+    return redirect(back or 'transaction_list')
 
 
 @api_view(['POST'])

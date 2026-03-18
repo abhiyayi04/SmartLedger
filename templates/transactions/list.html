@@ -9,6 +9,13 @@
     <button type="button" id="suggest-all-btn" class="btn btn-outline-primary">
       <i class="bi bi-stars me-1"></i>Suggest All Uncategorized
     </button>
+    <form method="post" action="{% url 'batch_accept_suggestions' %}" class="d-inline">
+      {% csrf_token %}
+      <input type="hidden" name="back" value="{{ request.get_full_path }}">
+      <button type="submit" class="btn btn-outline-success">
+        <i class="bi bi-check-all me-1"></i>Batch Accept Suggestions
+      </button>
+    </form>
     <a href="{% url 'export_csv' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-dark">
       <i class="bi bi-download me-1"></i>Export CSV
     </a>
@@ -29,13 +36,13 @@
     <form method="get" class="row g-2 align-items-end">
       <div class="col-sm-6 col-md-2">
         <label class="form-label small mb-1">From</label>
-        <input type="date" name="date_from" class="form-control form-control-sm"
-               value="{{ filter_form.date_from.value|default:'' }}">
+        <input type="text" name="date_from" class="form-control form-control-sm"
+               placeholder="YYYY-MM-DD" value="{{ filter_form.date_from.value|default:'' }}">
       </div>
       <div class="col-sm-6 col-md-2">
         <label class="form-label small mb-1">To</label>
-        <input type="date" name="date_to" class="form-control form-control-sm"
-               value="{{ filter_form.date_to.value|default:'' }}">
+        <input type="text" name="date_to" class="form-control form-control-sm"
+               placeholder="YYYY-MM-DD" value="{{ filter_form.date_to.value|default:'' }}">
       </div>
       <div class="col-sm-6 col-md-2">
         <label class="form-label small mb-1">Category</label>

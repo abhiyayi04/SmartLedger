@@ -20,8 +20,9 @@
 
             <div class="col-md-6">
               <label for="{{ form.date.id_for_label }}" class="form-label">Date</label>
-              <input type="date" name="date" id="{{ form.date.id_for_label }}"
+              <input type="text" name="date" id="{{ form.date.id_for_label }}"
                      class="form-control {% if form.date.errors %}is-invalid{% endif %}"
+                     placeholder="YYYY-MM-DD"
                      value="{{ form.date.value|date:'Y-m-d'|default:'' }}">
               {% for e in form.date.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
             </div>

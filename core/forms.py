@@ -5,6 +5,15 @@ from decimal import Decimal
 from .models import Category, Transaction
 
 
+class DateTextInput(forms.TextInput):
+    """Text input that accepts dates in YYYY-MM-DD format only."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('attrs', {})
+        kwargs['attrs'].setdefault('placeholder', 'YYYY-MM-DD')
+        super().__init__(*args, **kwargs)
+
+
 class RegisterForm(UserCreationForm):
     email = forms.EmailField(required=True, help_text='Required.')
 
@@ -26,6 +35,11 @@ class CategoryForm(forms.ModelForm):
 
 
 class TransactionForm(forms.ModelForm):
+    date = forms.DateField(
+        input_formats=['%Y-%m-%d'],
+        widget=DateTextInput(),
+        error_messages={'invalid': 'Enter a date in YYYY-MM-DD format (e.g. 2024-01-31).'},
+    )
     amount = forms.DecimalField(
         max_digits=10, decimal_places=2, min_value=Decimal('0.01'),
         widget=forms.NumberInput(attrs={'step': '0.01', 'min': '0.01', 'placeholder': '0.00'}),
@@ -34,9 +48,6 @@ class TransactionForm(forms.ModelForm):
     class Meta:
         model = Transaction
         fields = ('date', 'description', 'amount', 'vendor', 'transaction_type', 'category')
-        widgets = {
-            'date': forms.DateInput(attrs={'type': 'date'}),
-        }
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -83,19 +94,31 @@ class CSVUploadForm(forms.Form):
 
 class DashboardFilterForm(forms.Form):
     date_from = forms.DateField(
-        required=False, widget=forms.DateInput(attrs={'type': 'date'})
+        required=False,
+        input_formats=['%Y-%m-%d'],
+        widget=DateTextInput(),
+        error_messages={'invalid': 'Enter a date in YYYY-MM-DD format (e.g. 2024-01-31).'},
     )
     date_to = forms.DateField(
-        required=False, widget=forms.DateInput(attrs={'type': 'date'})
+        required=False,
+        input_formats=['%Y-%m-%d'],
+        widget=DateTextInput(),
+        error_messages={'invalid': 'Enter a date in YYYY-MM-DD format (e.g. 2024-01-31).'},
     )
 
 
 class TransactionFilterForm(forms.Form):
     date_from = forms.DateField(
-        required=False, widget=forms.DateInput(attrs={'type': 'date'})
+        required=False,
+        input_formats=['%Y-%m-%d'],
+        widget=DateTextInput(),
+        error_messages={'invalid': 'Enter a date in YYYY-MM-DD format (e.g. 2024-01-31).'},
     )
     date_to = forms.DateField(
-        required=False, widget=forms.DateInput(attrs={'type': 'date'})
+        required=False,
+        input_formats=['%Y-%m-%d'],
+        widget=DateTextInput(),
+        error_messages={'invalid': 'Enter a date in YYYY-MM-DD format (e.g. 2024-01-31).'},
     )
     category = forms.ModelChoiceField(
         queryset=Category.objects.none(), required=False, empty_label='All Categories'
@@ -127,3 +150,18 @@ class TransactionFilterForm(forms.Form):
         super().__init__(*args, **kwargs)
         if user:
             self.fields['category'].queryset = Category.objects.filter(user=user)
+
+    def clean(self):
+        cleaned = super().clean()
+        date_from = cleaned.get('date_from')
+        date_to = cleaned.get('date_to')
+        amount_min = cleaned.get('amount_min')
+        amount_max = cleaned.get('amount_max')
+
+        if date_from and date_to and date_from > date_to:
+            raise forms.ValidationError('Start date must not be after end date.')
+
+        if amount_min is not None and amount_max is not None and amount_min > amount_max:
+            raise forms.ValidationError('Minimum amount must not be greater than maximum amount.')
+
+        return cleaned
