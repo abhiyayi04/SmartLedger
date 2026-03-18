@@ -322,6 +322,18 @@ def csv_upload(request):
 
 
 @login_required
+def import_history_list(request):
+    history = ImportHistory.objects.filter(user=request.user)
+    return render(request, 'transactions/import_history_list.html', {'history': history})
+
+
+@login_required
+def import_history_detail(request, pk):
+    record = get_object_or_404(ImportHistory, pk=pk, user=request.user)
+    return render(request, 'transactions/import_history_detail.html', {'record': record})
+
+
+@login_required
 def category_list(request):
     categories = Category.objects.filter(user=request.user)
     income_cats = categories.filter(type=Category.INCOME)

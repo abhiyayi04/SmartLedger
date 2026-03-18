@@ -13,6 +13,8 @@ urlpatterns = [
     path('transactions/<int:pk>/delete/', views.transaction_delete, name='transaction_delete'),
     path('transactions/upload/', views.csv_upload, name='csv_upload'),
     path('transactions/export/', views.export_csv, name='export_csv'),
+    path('transactions/imports/', views.import_history_list, name='import_history_list'),
+    path('transactions/imports/<int:pk>/', views.import_history_detail, name='import_history_detail'),
     # AI API
     path('api/suggest-category/', views.api_suggest_category, name='api_suggest_category'),
     path('api/batch-suggest/', views.api_batch_suggest, name='api_batch_suggest'),

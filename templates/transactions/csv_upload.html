@@ -9,7 +9,10 @@
           <a href="{% url 'transaction_list' %}" class="btn btn-sm btn-outline-secondary me-3">
             <i class="bi bi-arrow-left"></i>
           </a>
-          <h4 class="fw-bold mb-0">Import CSV</h4>
+          <h4 class="fw-bold mb-0 me-auto">Import CSV</h4>
+          <a href="{% url 'import_history_list' %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-clock-history me-1"></i>History
+          </a>
         </div>
 
         <div class="alert alert-light border mb-4">

@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block title %}Import Results — SmartLedger{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+
+    <div class="d-flex align-items-center mb-4 gap-3">
+      <a href="{% url 'import_history_list' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i>
+      </a>
+      <h4 class="fw-bold mb-0">Import Results</h4>
+    </div>
+
+    <!-- Summary card -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+          <div>
+            <p class="mb-1 fw-semibold">{{ record.filename }}</p>
+            <p class="text-muted small mb-0">Uploaded {{ record.uploaded_at|date:"N j, Y \a\t g:i A" }}</p>
+          </div>
+          <a href="{% url 'transaction_list' %}" class="btn btn-dark btn-sm">
+            <i class="bi bi-list-ul me-1"></i>View Transactions
+          </a>
+        </div>
+
+        <div class="row g-3 text-center">
+          <div class="col-6 col-sm-3">
+            <div class="border rounded p-3">
+              <div class="fs-4 fw-bold">{{ record.total_rows }}</div>
+              <div class="small text-muted">Total Rows</div>
+            </div>
+          </div>
+          <div class="col-6 col-sm-3">
+            <div class="border rounded p-3 {% if record.imported_count %}border-success{% endif %}">
+              <div class="fs-4 fw-bold {% if record.imported_count %}text-success{% endif %}">{{ record.imported_count }}</div>
+              <div class="small text-muted">Imported</div>
+            </div>
+          </div>
+          <div class="col-6 col-sm-3">
+            <div class="border rounded p-3">
+              <div class="fs-4 fw-bold text-secondary">{{ record.duplicate_count }}</div>
+              <div class="small text-muted">Duplicates Skipped</div>
+            </div>
+          </div>
+          <div class="col-6 col-sm-3">
+            <div class="border rounded p-3 {% if record.invalid_count %}border-danger{% endif %}">
+              <div class="fs-4 fw-bold {% if record.invalid_count %}text-danger{% endif %}">{{ record.invalid_count }}</div>
+              <div class="small text-muted">Invalid Rows</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row-level errors -->
+    {% if record.error_details %}
+      <div class="card border-0 shadow-sm border-danger-subtle">
+        <div class="card-header bg-danger-subtle border-0 py-2">
+          <h6 class="fw-semibold mb-0 text-danger">
+            <i class="bi bi-exclamation-circle me-1"></i>
+            {{ record.invalid_count }} Row{{ record.invalid_count|pluralize }} with Errors
+          </h6>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th class="ps-4" style="width:80px">Row</th>
+                  <th>Errors</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for detail in record.error_details %}
+                  <tr>
+                    <td class="ps-4 text-muted small">Row {{ detail.row_num }}</td>
+                    <td>
+                      <ul class="mb-0 ps-3">
+                        {% for err in detail.errors %}
+                          <li class="small text-danger">{{ err }}</li>
+                        {% endfor %}
+                      </ul>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="alert alert-success">
+        <i class="bi bi-check-circle me-2"></i>No row errors — all parseable rows processed successfully.
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
