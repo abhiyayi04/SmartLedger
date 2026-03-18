@@ -48,13 +48,21 @@ def parse_csv(file):
         if parsed_date is None:
             errors.append(f'Invalid date "{date_str}" — use YYYY-MM-DD or MM/DD/YYYY')
 
-        # Parse amount
-        amount_str = row.get('Amount', '').strip().replace(',', '')
+        # Parse amount — supports plain numbers, $-prefixed, and (negative) accounting notation
+        amount_str = row.get('Amount', '').strip()
         parsed_amount = None
         transaction_type = None
         try:
-            raw = Decimal(amount_str)
-            transaction_type = Transaction.EXPENSE if raw < 0 else Transaction.INCOME
+            normalized = amount_str.replace(',', '').replace('$', '').strip()
+            negative = False
+            if normalized.startswith('(') and normalized.endswith(')'):
+                normalized = normalized[1:-1].strip()
+                negative = True
+            raw = Decimal(normalized)
+            if negative:
+                raw = -raw
+            from core.models import Transaction as _Tx
+            transaction_type = _Tx.EXPENSE if raw < 0 else _Tx.INCOME
             parsed_amount = abs(raw)
         except InvalidOperation:
             errors.append(f'Invalid amount "{amount_str}"')
@@ -129,5 +137,3 @@ def serialize_rows(rows):
     return result
 
 
-# Needed for the type constants — import lazily to avoid circular import
-from core.models import Transaction
