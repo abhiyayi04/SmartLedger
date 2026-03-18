@@ -130,7 +130,7 @@
                                 data-name="{{ t.ai_suggested_category.name }}">
                           <i class="bi bi-check-lg"></i> Accept
                         </button>
-                        <a href="{% url 'transaction_edit' t.pk %}"
+                        <a href="{% url 'transaction_edit' t.pk %}?back={{ request.get_full_path|urlencode }}"
                            class="btn btn-outline-secondary btn-sm py-0"
                            style="font-size:0.75rem">Change</a>
                       </div>
@@ -159,10 +159,10 @@
                 </td>
                 <td class="text-end pe-4">
                   <div class="btn-group btn-group-sm">
-                    <a href="{% url 'transaction_edit' t.pk %}" class="btn btn-outline-secondary">
+                    <a href="{% url 'transaction_edit' t.pk %}?back={{ request.get_full_path|urlencode }}" class="btn btn-outline-secondary">
                       <i class="bi bi-pencil"></i>
                     </a>
-                    <a href="{% url 'transaction_delete' t.pk %}" class="btn btn-outline-danger">
+                    <a href="{% url 'transaction_delete' t.pk %}?back={{ request.get_full_path|urlencode }}" class="btn btn-outline-danger">
                       <i class="bi bi-trash"></i>
                     </a>
                   </div>
@@ -238,7 +238,7 @@
                   data-name="${name}">
             <i class="bi bi-check-lg"></i> Accept
           </button>
-          <a href="/transactions/${pk}/edit/"
+          <a href="/transactions/${pk}/edit/?back=${encodeURIComponent(window.location.pathname + window.location.search)}"
              class="btn btn-outline-secondary btn-sm py-0"
              style="font-size:0.75rem">Change</a>
         </div>

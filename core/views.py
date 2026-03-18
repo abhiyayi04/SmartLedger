@@ -230,9 +230,15 @@ def transaction_add(request):
     return render(request, 'transactions/form.html', {'form': form, 'action': 'Add'})
 
 
+def _safe_back(url):
+    """Return url if it looks like a safe local path, else ''."""
+    return url if url and url.startswith('/') else ''
+
+
 @login_required
 def transaction_edit(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+    back = _safe_back(request.GET.get('back', '') or request.POST.get('back', ''))
     if request.method == 'POST':
         form = TransactionForm(request.POST, instance=transaction, user=request.user)
         if form.is_valid():
@@ -240,24 +246,25 @@ def transaction_edit(request, pk):
             audit(request.user, AuditLog.EDIT, transaction=t,
                   metadata={'description': t.description, 'amount': str(t.amount)})
             messages.success(request, 'Transaction updated.')
-            return redirect('transaction_list')
+            return redirect(back or 'transaction_list')
     else:
         form = TransactionForm(instance=transaction, user=request.user)
     return render(request, 'transactions/form.html', {
-        'form': form, 'action': 'Edit', 'transaction': transaction
+        'form': form, 'action': 'Edit', 'transaction': transaction, 'back': back,
     })
 
 
 @login_required
 def transaction_delete(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+    back = _safe_back(request.GET.get('back', '') or request.POST.get('back', ''))
     if request.method == 'POST':
         audit(request.user, AuditLog.DELETE,
               metadata={'description': transaction.description, 'amount': str(transaction.amount), 'date': str(transaction.date)})
         transaction.delete()
         messages.success(request, 'Transaction deleted.')
-        return redirect('transaction_list')
-    return render(request, 'transactions/confirm_delete.html', {'transaction': transaction})
+        return redirect(back or 'transaction_list')
+    return render(request, 'transactions/confirm_delete.html', {'transaction': transaction, 'back': back})
 
 
 @login_required

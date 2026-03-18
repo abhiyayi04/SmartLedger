@@ -14,9 +14,10 @@
           </span>
         </p>
         <div class="d-flex gap-2 justify-content-center mt-4">
-          <a href="{% url 'transaction_list' %}" class="btn btn-outline-secondary">Cancel</a>
+          <a href="{{ back|default:'' }}{% if not back %}{% url 'transaction_list' %}{% endif %}" class="btn btn-outline-secondary">Cancel</a>
           <form method="post">
             {% csrf_token %}
+            {% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
             <button type="submit" class="btn btn-danger">Delete</button>
           </form>
         </div>
