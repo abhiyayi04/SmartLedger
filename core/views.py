@@ -434,7 +434,10 @@ def api_suggest_for_transaction(request, pk):
     categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
 
     from .services.ai_service import suggest_category
-    name = suggest_category(transaction.description, transaction.vendor, categories)
+    name = suggest_category(
+        transaction.description, transaction.vendor, categories,
+        transaction_type=transaction.transaction_type,
+    )
 
     if name is None:
         return Response({'suggestion': None})
