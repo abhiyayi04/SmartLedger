@@ -142,12 +142,26 @@ def dashboard(request):
 @login_required
 def export_csv(request):
     qs = Transaction.objects.filter(user=request.user).select_related('category').order_by('-date')
-    date_from = request.GET.get('date_from', '')
-    date_to = request.GET.get('date_to', '')
-    if date_from:
-        qs = qs.filter(date__gte=date_from)
-    if date_to:
-        qs = qs.filter(date__lte=date_to)
+    filter_form = TransactionFilterForm(request.GET or None, user=request.user)
+
+    if filter_form.is_valid():
+        d = filter_form.cleaned_data
+        if d.get('date_from'):
+            qs = qs.filter(date__gte=d['date_from'])
+        if d.get('date_to'):
+            qs = qs.filter(date__lte=d['date_to'])
+        if d.get('category'):
+            qs = qs.filter(category=d['category'])
+        if d.get('type'):
+            qs = qs.filter(transaction_type=d['type'])
+        if d.get('status'):
+            qs = qs.filter(status=d['status'])
+        if d.get('vendor'):
+            qs = qs.filter(vendor__icontains=d['vendor'])
+        if d.get('amount_min') is not None:
+            qs = qs.filter(amount__gte=d['amount_min'])
+        if d.get('amount_max') is not None:
+            qs = qs.filter(amount__lte=d['amount_max'])
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="transactions.csv"'
