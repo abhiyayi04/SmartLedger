@@ -102,11 +102,11 @@ def dashboard(request):
             monthly_data[key] = {'income': 0.0, 'expense': 0.0}
         monthly_data[key][item['transaction_type']] = float(item['total'])
 
-    # Top 5 vendors by expense spend
+    # Top 5 vendors by expense spend (group by normalized vendor for consistency)
     top_vendors = (
         qs.filter(transaction_type=Transaction.EXPENSE)
-        .exclude(vendor='')
-        .values('vendor')
+        .exclude(normalized_vendor='')
+        .values('normalized_vendor')
         .annotate(total=Sum('amount'))
         .order_by('-total')[:5]
     )
@@ -122,7 +122,7 @@ def dashboard(request):
             'expense': [monthly_data[k]['expense'] for k in monthly_data],
         },
         'vendors': {
-            'labels': [item['vendor'] for item in top_vendors],
+            'labels': [item['normalized_vendor'] for item in top_vendors],
             'data': [float(item['total']) for item in top_vendors],
         },
     }
@@ -276,6 +276,7 @@ def csv_upload(request):
             try:
                 rows = parse_csv(request.FILES['file'])
                 rows = detect_duplicates(rows, request.user)
+                from .models import _normalize_vendor as _nv
                 to_import = [
                     Transaction(
                         user=request.user,
@@ -283,6 +284,7 @@ def csv_upload(request):
                         description=row['description'],
                         amount=Decimal(row['amount']),
                         vendor=row['vendor'],
+                        normalized_vendor=_nv(row['vendor']),
                         transaction_type=row['transaction_type'],
                     )
                     for row in rows if not row['errors'] and not row['is_duplicate']

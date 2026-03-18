@@ -1,6 +1,13 @@
+import re
+
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import User
+
+
+def _normalize_vendor(raw):
+    """Strip, collapse whitespace, and lowercase for consistent grouping."""
+    return re.sub(r'\s+', ' ', (raw or '').strip().lower())
 
 
 class Category(models.Model):
@@ -40,6 +47,7 @@ class Transaction(models.Model):
     description = models.CharField(max_length=500)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     vendor = models.CharField(max_length=200, blank=True)
+    normalized_vendor = models.CharField(max_length=200, blank=True, db_index=True)
     transaction_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
     category = models.ForeignKey(
         Category, on_delete=models.SET_NULL, null=True, blank=True,
@@ -59,6 +67,10 @@ class Transaction(models.Model):
             models.Index(fields=['user', 'category']),
             models.Index(fields=['user', 'transaction_type']),
         ]
+
+    def save(self, *args, **kwargs):
+        self.normalized_vendor = _normalize_vendor(self.vendor)
+        super().save(*args, **kwargs)
 
     def clean(self):
         errors = {}
