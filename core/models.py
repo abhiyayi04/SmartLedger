@@ -35,20 +35,12 @@ class Transaction(models.Model):
         (EXPENSE, 'Expense'),
     ]
 
-    PENDING = 'pending'
-    CLEARED = 'cleared'
-    STATUS_CHOICES = [
-        (PENDING, 'Pending'),
-        (CLEARED, 'Cleared'),
-    ]
-
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
     date = models.DateField()
     description = models.CharField(max_length=500)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     vendor = models.CharField(max_length=200, blank=True)
     transaction_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     category = models.ForeignKey(
         Category, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='transactions'
@@ -66,7 +58,6 @@ class Transaction(models.Model):
             models.Index(fields=['user', 'date']),
             models.Index(fields=['user', 'category']),
             models.Index(fields=['user', 'transaction_type']),
-            models.Index(fields=['user', 'status']),
         ]
 
     def clean(self):

@@ -155,8 +155,6 @@ def export_csv(request):
             qs = qs.filter(category=d['category'])
         if d.get('type'):
             qs = qs.filter(transaction_type=d['type'])
-        if d.get('status'):
-            qs = qs.filter(status=d['status'])
         if d.get('vendor'):
             qs = qs.filter(vendor__icontains=d['vendor'])
         if d.get('amount_min') is not None:
@@ -167,7 +165,7 @@ def export_csv(request):
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="transactions.csv"'
     writer = csv_module.writer(response)
-    writer.writerow(['Date', 'Description', 'Amount', 'Vendor', 'Type', 'Status', 'Category'])
+    writer.writerow(['Date', 'Description', 'Amount', 'Vendor', 'Type', 'Category'])
     for t in qs:
         sign = '-' if t.transaction_type == Transaction.EXPENSE else ''
         writer.writerow([
@@ -176,7 +174,6 @@ def export_csv(request):
             f"{sign}{t.amount}",
             t.vendor,
             t.get_transaction_type_display(),
-            t.get_status_display(),
             t.category.name if t.category else '',
         ])
     return response
@@ -197,8 +194,6 @@ def transaction_list(request):
             qs = qs.filter(category=d['category'])
         if d.get('type'):
             qs = qs.filter(transaction_type=d['type'])
-        if d.get('status'):
-            qs = qs.filter(status=d['status'])
         if d.get('vendor'):
             qs = qs.filter(vendor__icontains=d['vendor'])
         if d.get('amount_min') is not None:

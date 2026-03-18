@@ -33,7 +33,7 @@ class TransactionForm(forms.ModelForm):
 
     class Meta:
         model = Transaction
-        fields = ('date', 'description', 'amount', 'vendor', 'transaction_type', 'status', 'category')
+        fields = ('date', 'description', 'amount', 'vendor', 'transaction_type', 'category')
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date'}),
         }
@@ -102,9 +102,6 @@ class TransactionFilterForm(forms.Form):
     )
     type = forms.ChoiceField(
         choices=[('', 'All Types')] + Transaction.TYPE_CHOICES, required=False
-    )
-    status = forms.ChoiceField(
-        choices=[('', 'All Statuses')] + Transaction.STATUS_CHOICES, required=False
     )
     vendor = forms.CharField(required=False, max_length=200)
     amount_min = forms.DecimalField(

@@ -31,7 +31,6 @@ def make_transaction(user, **kwargs):
         amount=Decimal('100.00'),
         vendor='ACME',
         transaction_type=Transaction.EXPENSE,
-        status=Transaction.PENDING,
     )
     defaults.update(kwargs)
     return Transaction.objects.create(user=user, **defaults)
@@ -172,7 +171,6 @@ class CategoryAssignmentTests(TestCase):
             'amount': '100.00',
             'vendor': 'ACME',
             'transaction_type': Transaction.EXPENSE,
-            'status': Transaction.PENDING,
             'category': self.cat.pk,
         })
         t.refresh_from_db()
@@ -234,7 +232,6 @@ class TransactionFormValidationTests(TestCase):
             'amount': '100.00',
             'vendor': 'ACME',
             'transaction_type': Transaction.EXPENSE,
-            'status': Transaction.PENDING,
             'category': self.expense_cat.pk,
         }
         data.update(overrides)
@@ -287,7 +284,6 @@ class TransactionModelValidationTests(TestCase):
             description='Test',
             amount=Decimal('50.00'),
             transaction_type=Transaction.EXPENSE,
-            status=Transaction.PENDING,
         )
         defaults.update(kwargs)
         t = Transaction(user=self.user, **defaults)
