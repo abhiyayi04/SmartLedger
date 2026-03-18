@@ -130,3 +130,21 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.get_action_display()} by {self.user_id} at {self.created_at}"
+
+
+class ImportHistory(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='import_history')
+    filename = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    total_rows = models.IntegerField(default=0)
+    imported_count = models.IntegerField(default=0)
+    duplicate_count = models.IntegerField(default=0)
+    invalid_count = models.IntegerField(default=0)
+    # List of {row_num, errors} dicts for rows that had errors
+    error_details = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"{self.filename} ({self.uploaded_at:%Y-%m-%d}) by {self.user_id}"

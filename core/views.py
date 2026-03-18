@@ -15,7 +15,7 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm, DashboardFilterForm
-from .models import AuditLog, Category, Transaction
+from .models import AuditLog, Category, ImportHistory, Transaction
 from .utils import audit
 
 
@@ -282,26 +282,36 @@ def csv_upload(request):
                         amount=Decimal(row['amount']),
                         vendor=row['vendor'],
                         transaction_type=row['transaction_type'],
-                        status=Transaction.PENDING,
                     )
                     for row in rows if not row['errors'] and not row['is_duplicate']
                 ]
                 duplicate_count = sum(1 for r in rows if r['is_duplicate'] and not r['errors'])
                 error_count = sum(1 for r in rows if r['errors'])
+                error_details = [
+                    {'row_num': r['row_num'], 'errors': r['errors']}
+                    for r in rows if r['errors']
+                ]
+
                 if to_import:
                     with db_transaction.atomic():
                         Transaction.objects.bulk_create(to_import)
+
+                history = ImportHistory.objects.create(
+                    user=request.user,
+                    filename=request.FILES['file'].name,
+                    total_rows=len(rows),
+                    imported_count=len(to_import),
+                    duplicate_count=duplicate_count,
+                    invalid_count=error_count,
+                    error_details=error_details,
+                )
+                if len(to_import) > 0:
                     audit(request.user, AuditLog.IMPORT, metadata={
                         'filename': request.FILES['file'].name,
                         'imported_count': len(to_import),
+                        'import_history_id': history.pk,
                     })
-                parts = [f'Imported {len(to_import)} transaction(s).']
-                if duplicate_count:
-                    parts.append(f'Skipped {duplicate_count} duplicate(s).')
-                if error_count:
-                    parts.append(f'Skipped {error_count} invalid row(s).')
-                messages.success(request, ' '.join(parts))
-                return redirect('transaction_list')
+                return redirect('import_history_detail', pk=history.pk)
             except ValueError as e:
                 messages.error(request, str(e))
     else:
