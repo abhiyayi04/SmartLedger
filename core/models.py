@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -58,6 +59,32 @@ class Transaction(models.Model):
 
     class Meta:
         ordering = ['-date', '-created_at']
+
+    def clean(self):
+        errors = {}
+
+        if self.category_id and self.user_id:
+            if self.category.user_id != self.user_id:
+                errors['category'] = 'Category must belong to the same user as the transaction.'
+            elif self.category.type != self.transaction_type:
+                errors['category'] = (
+                    f'Category type "{self.category.type}" does not match '
+                    f'transaction type "{self.transaction_type}".'
+                )
+
+        if self.ai_suggested_category_id and self.user_id:
+            if self.ai_suggested_category.user_id != self.user_id:
+                errors['ai_suggested_category'] = (
+                    'AI suggested category must belong to the same user as the transaction.'
+                )
+            elif self.ai_suggested_category.type != self.transaction_type:
+                errors['ai_suggested_category'] = (
+                    f'AI suggested category type "{self.ai_suggested_category.type}" does not match '
+                    f'transaction type "{self.transaction_type}".'
+                )
+
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self):
         return f"{self.date} | {self.description} | ${self.amount}"

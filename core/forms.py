@@ -40,11 +40,29 @@ class TransactionForm(forms.ModelForm):
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self._user = user
         if user:
             self.fields['category'].queryset = Category.objects.filter(user=user)
         self.fields['category'].required = False
         self.fields['category'].empty_label = '— Uncategorized —'
         self.fields['vendor'].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        category = cleaned.get('category')
+        transaction_type = cleaned.get('transaction_type')
+
+        if category and self._user and category.user_id != self._user.pk:
+            self.add_error('category', 'That category does not belong to your account.')
+
+        if category and transaction_type and category.type != transaction_type:
+            type_label = 'income' if transaction_type == Transaction.INCOME else 'expense'
+            self.add_error(
+                'category',
+                f'Please choose an {type_label} category for an {type_label} transaction.',
+            )
+
+        return cleaned
 
 
 class CSVUploadForm(forms.Form):
