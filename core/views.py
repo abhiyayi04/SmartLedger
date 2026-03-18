@@ -362,6 +362,7 @@ def api_suggest_category(request):
         return Response({'error': 'description is required'}, status=400)
 
     categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+    cat_map = {c['name']: c['id'] for c in categories}
 
     from .services.ai_service import suggest_category
     name = suggest_category(description, vendor, categories)
@@ -369,8 +370,7 @@ def api_suggest_category(request):
     if name is None:
         return Response({'suggestion': None})
 
-    cat = Category.objects.filter(user=request.user, name=name).first()
-    return Response({'suggestion': name, 'category_id': cat.pk if cat else None})
+    return Response({'suggestion': name, 'category_id': cat_map.get(name)})
 
 
 @api_view(['POST'])
@@ -383,14 +383,15 @@ def api_batch_suggest(request):
         return Response({'suggestions': {}})
 
     categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+    cat_map = {c['name']: c['id'] for c in categories}
 
     from .services.ai_service import batch_suggest
     names = batch_suggest(rows, categories)
 
-    suggestions = {}
-    for idx, name in names.items():
-        cat = Category.objects.filter(user=request.user, name=name).first()
-        suggestions[idx] = {'name': name, 'category_id': cat.pk if cat else None}
+    suggestions = {
+        idx: {'name': name, 'category_id': cat_map.get(name)}
+        for idx, name in names.items()
+    }
 
     return Response({'suggestions': suggestions})
 
@@ -416,16 +417,19 @@ def api_suggest_uncategorized(request):
         return Response({'suggestions': {}})
 
     categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+    cat_map = {c['name']: c['id'] for c in categories}
 
     from .services.ai_service import batch_suggest
     names = batch_suggest(rows, categories)
 
     suggestions = {}
     for pk_str, name in names.items():
-        cat = Category.objects.filter(user=request.user, name=name).first()
-        if cat:
-            Transaction.objects.filter(pk=int(pk_str), user=request.user).update(ai_suggested_category=cat)
-            suggestions[pk_str] = {'name': name, 'category_id': cat.pk}
+        cat_id = cat_map.get(name)
+        if cat_id:
+            Transaction.objects.filter(pk=int(pk_str), user=request.user).update(
+                ai_suggested_category_id=cat_id
+            )
+            suggestions[pk_str] = {'name': name, 'category_id': cat_id}
 
     return Response({'suggestions': suggestions})
 
@@ -441,6 +445,7 @@ def api_suggest_for_transaction(request, pk):
         return Response({'error': 'Transaction already categorized.'}, status=400)
 
     categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+    cat_map = {c['name']: c['id'] for c in categories}
 
     from .services.ai_service import suggest_category
     name = suggest_category(
@@ -451,12 +456,12 @@ def api_suggest_for_transaction(request, pk):
     if name is None:
         return Response({'suggestion': None})
 
-    cat = Category.objects.filter(user=request.user, name=name).first()
-    if cat:
-        transaction.ai_suggested_category = cat
-        transaction.save(update_fields=['ai_suggested_category'])
+    cat_id = cat_map.get(name)
+    if cat_id:
+        transaction.ai_suggested_category_id = cat_id
+        transaction.save(update_fields=['ai_suggested_category_id'])
 
-    return Response({'suggestion': name, 'category_id': cat.pk if cat else None})
+    return Response({'suggestion': name, 'category_id': cat_id})
 
 
 @api_view(['POST'])
