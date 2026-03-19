@@ -22,7 +22,7 @@ SmartLedger will be implemented as a **fullstack financial analytics platform** 
 
 The system will provide APIs for transaction ingestion, categorization, and analytics queries. Users will interact with the system through a frontend dashboard that displays financial insights such as spending trends, category distributions, and vendor analytics.
 
-The backend services will process transaction data, store records in a relational database, and expose endpoints for querying financial information. The platform will also support CSV-based transaction ingestion to simplify importing financial records.
+The backend services will process transaction data, store records in a relational database, and expose endpoints for querying financial information. The platform also supports CSV-based transaction ingestion to simplify importing financial records.
 
 The architecture is designed to demonstrate scalable backend services, structured database design, and interactive data visualization.
 
@@ -65,8 +65,8 @@ The system shall:
 
 - Allow users to manually add financial transactions.
 - Allow users to upload transaction data through CSV files.
-- Detect and flag duplicate transactions during file upload (matched on date + amount + description) and prompt the user before importing. Duplicate detection is checked against all existing transactions for the logged-in user.
-- Users shall be able to upload CSV files containing transaction data. The backend shall parse the uploaded file and extract transaction records. The system shall validate each record before storing it. Parsed transactions shall be inserted into the database.
+- Detect and flag duplicate transactions during file upload (matched on date + amount + normalized description). Duplicate detection is checked against all existing transactions for the logged-in user and also within the same CSV file.
+- Users shall be able to upload CSV files containing transaction data. The backend shall parse the uploaded file and extract transaction records. The system shall validate each record before storing it. Valid, non-duplicate rows are inserted into the database immediately after upload. A summary (ImportHistory) is created for every upload.
 - The expected CSV format uses fixed column headers: `Date`, `Description`, `Amount`, `Vendor`. A negative `Amount` value automatically sets the transaction type to `expense`; a positive value sets it to `income`. Example:
 
   ```
@@ -74,24 +74,25 @@ The system shall:
   2024-01-15,AWS Invoice,-120.00,Amazon
   2024-01-16,Client Payment,5000.00,Acme Corp
   ```
+
 - Store transaction information including:
   - date
   - description
   - amount
-  - vendor/payee
+  - vendor / payee
+  - normalized_vendor (lowercased, whitespace-collapsed vendor used for grouping)
   - category
   - transaction type (income or expense)
-  - status (pending or cleared)
 - Allow users to edit and delete transactions.
-- Display transactions in a table format.
+- Display transactions in a paginated table (25 rows per page).
 - Allow transactions to be filtered by:
-  - date range
+  - date range (`date_from`, `date_to`) — cross-field validation rejects `date_from > date_to`
   - category
   - transaction type
-  - vendor
-  - amount
-  - status
+  - vendor (partial, case-insensitive match)
+  - amount range (`amount_min`, `amount_max`) — cross-field validation rejects `amount_min > amount_max`
 - Allow transactions to be sorted by date, amount, and category.
+- Preserve active filter and page state across edit and delete flows (via a `back` query parameter). Back URLs are validated to be local paths only — protocol-relative or external URLs are rejected.
 
 ---
 
@@ -127,7 +128,7 @@ The system shall:
 
 ### Description
 
-SmartLedger will include an AI-assisted feature that suggests categories for financial transactions.
+SmartLedger includes an AI-assisted feature that suggests categories for financial transactions.
 
 ### Functional Requirements
 
@@ -135,10 +136,23 @@ The system shall:
 
 - Send transaction descriptions to the OpenAI API using the `gpt-4o-mini` model. The API key is stored in the `OPENAI_API_KEY` environment variable.
 - Receive category suggestions from the AI service.
-- Display the suggested category to the user.
-- Allow the user to accept or modify the suggestion.
-- Store both the AI-suggested category and the final user-selected category.
-- Support batch categorization: when a file is uploaded, suggest categories for all uncategorized transactions in a single operation.
+- Store the AI-suggested category on the transaction in the `ai_suggested_category` field.
+- Display the suggested category inline in the transaction list with Accept and Change buttons per row.
+- Allow the user to accept a suggestion row-by-row using the per-row Accept button. Accepting sets `category = ai_suggested_category` for that transaction.
+- Allow the user to change a suggestion by clicking Change, which opens the transaction edit form.
+- Provide a per-row "Suggest" button for uncategorized transactions that have no existing suggestion — calls the AI for that single transaction and stores the result.
+- Provide a "Suggest All Uncategorized" button on the transactions page that:
+  - Runs AI suggestions in batch for all uncategorized transactions (no category, no existing suggestion) for the logged-in user.
+  - Saves results to `ai_suggested_category` on each transaction.
+  - Updates the UI inline without a page reload.
+- Provide a "Batch Accept Suggestions" button on the transactions page that:
+  - Accepts all existing AI suggestions at once for the current user.
+  - Only affects transactions where `category` is null and `ai_suggested_category` is not null.
+  - Does NOT generate new suggestions.
+  - Does NOT overwrite transactions that already have a category.
+  - Shows a flash message with the count of transactions updated.
+  - Redirects back to the transaction list preserving the current filter state.
+- Provide a "Suggest" button on the transaction add/edit form that calls the AI for the current description/vendor and pre-fills the category dropdown.
 - Handle AI API failures gracefully — if the API is unavailable or returns an error, display a user-friendly message and allow the user to categorize manually without disruption.
 
 The AI feature will assist users but will not automatically override user decisions.
@@ -161,13 +175,13 @@ The system shall:
 - Show total income for a selected date range.
 - Show total expenses for a selected date range.
 - Display net cash flow (income minus expenses).
-- Display recent transactions.
-- Display uncategorized transactions requiring review.
+- Display recent transactions (last 10).
+- Display uncategorized transactions requiring review (all-time count, always visible).
 - Display expenses grouped by category.
 - Display monthly summaries of income and expenses.
 - Allow users to filter reports by date range.
-- Allow users to export financial reports as CSV files.
-- Top vendors by total spend
+- Allow users to export financial reports as CSV files, respecting any active filters.
+- Display top 5 vendors by total spend, grouped by `normalized_vendor` so that vendor name variants (e.g. "Amazon", "AMAZON", " amazon ") count as a single vendor.
 
 ### Example Dashboard Metrics
 
@@ -176,12 +190,11 @@ The dashboard may include:
 - Total Income
 - Total Expenses
 - Net Cash Flow
-- Expense Breakdown by Category
-- Monthly Income vs Expense Chart
-- Recent Transactions
-- Pie chart for category distribution
-- Bar chart for top vendors
-- Line chart for spending trends over time
+- Expense Breakdown by Category (doughnut chart)
+- Monthly Income vs Expense Chart (grouped bar chart)
+- Spending Trend over time (line chart)
+- Top Vendors by Spend (horizontal bar chart)
+- Recent Transactions table
 
 ---
 
@@ -197,8 +210,8 @@ Users shall be able to filter transactions by:
 
 - Category
 - Vendor
-- Date range
-- Amount thresholds
+- Date range (with validation that start ≤ end)
+- Amount range (with validation that min ≤ max)
 
 Example queries:
 
@@ -216,11 +229,76 @@ The system shall provide analytics on vendor spending patterns.
 
 ### Functional Requirements
 
-The system shall generate insights including:
+The system shall:
 
-- Top vendors by total spending
-- Total spend per vendor
-- Number of transactions per vendor
+- Normalize vendor names on save: strip leading/trailing whitespace, collapse internal whitespace, and lowercase. This is stored in the `normalized_vendor` field and used for grouping.
+- Group vendor analytics by `normalized_vendor` so variants like "Amazon", "AMAZON", and " Amazon " are treated as the same vendor.
+- Display top vendors by total spending on the dashboard.
+
+---
+
+## 8. Import History
+
+### Description
+
+Every CSV upload creates a permanent record so users can audit what was imported.
+
+### Functional Requirements
+
+The system shall:
+
+- Create an `ImportHistory` record for every CSV upload, storing:
+  - `filename`
+  - `uploaded_at`
+  - `total_rows` (all data rows in the file)
+  - `imported_count` (rows successfully imported)
+  - `duplicate_count` (rows skipped as duplicates)
+  - `invalid_count` (rows skipped due to parse errors)
+  - `error_details` (list of `{row_num, errors}` for each invalid row)
+- Provide an Import History list page showing all past uploads for the logged-in user.
+- Provide an Import History detail page showing the full breakdown for a specific upload.
+- Scope import history strictly to the logged-in user — users cannot access another user's history.
+- Link to Import History from the Transactions dropdown in the navbar.
+
+---
+
+## 9. Audit Logging
+
+### Description
+
+The system must maintain an audit trail of significant user actions for accountability and traceability.
+
+### Functional Requirements
+
+The system shall create an `AuditLog` entry for each of the following actions:
+
+| Action | Trigger | Transaction FK |
+|---|---|---|
+| `import` | Successful CSV upload (at least one row imported) | None (bulk) |
+| `edit` | Transaction saved via edit form | Set to the edited transaction |
+| `delete` | Transaction deleted | None (SET_NULL after deletion) |
+| `ai_accepted` | Single-row AI suggestion accepted via Accept button | Set to the accepted transaction |
+| `ai_accepted` | Batch Accept Suggestions completed | None (bulk); metadata includes `batch: true`, `count`, `transaction_ids` |
+
+Each log entry stores: `user`, `transaction` (nullable FK), `action`, `metadata` (JSON), `created_at`.
+
+---
+
+## 10. Date Input Format
+
+### Description
+
+All date inputs across the application use a single, consistent typed format.
+
+### Functional Requirements
+
+The system shall:
+
+- Use `type="text"` inputs (not browser date pickers) for all date fields.
+- Accept only the format `YYYY-MM-DD` in all date fields throughout the app (dashboard filter, transaction filter, transaction add/edit form).
+- Display a `YYYY-MM-DD` placeholder on all date inputs.
+- Reject any other format (e.g. `MM/DD/YYYY`, `DD-MM-YYYY`) with a user-friendly validation error.
+- Apply this format consistently via a shared `DateTextInput` widget and `input_formats=['%Y-%m-%d']` on all `DateField` instances.
 
 ---
 
@@ -236,12 +314,14 @@ The system shall generate insights including:
 - User data must be protected and isolated per account.
 - Authentication must be required for all financial data access.
 - All forms must include CSRF protection.
+- Back-redirect URLs must be validated to be local paths only. Protocol-relative URLs (e.g. `//evil.com`) and absolute external URLs are rejected; the app falls back to the transaction list.
 
 ## Usability
 
 - The user interface must be simple and intuitive.
 - Forms must provide inline validation feedback.
 - The UI must be responsive and usable on mobile browsers.
+- Filter forms must validate cross-field constraints (date range direction, amount range direction) and show clear error messages.
 
 ## Scalability
 
@@ -264,11 +344,11 @@ SmartLedger follows a **three-layer web application architecture**.
 ```
 User Browser
     ↓
-Django REST Framework
+Django Views + REST Framework
     ↓
-MySQL Database
-    ↓ 
-External AI API
+SQLite / MySQL Database
+    ↓
+External AI API (OpenAI)
 ```
 
 ---
@@ -282,7 +362,7 @@ Django Views and Business Logic
     ↓
 Django ORM
     ↓
-MySQL Database
+Database
 
 Django Views → External AI API (for category suggestions)
 ```
@@ -297,8 +377,9 @@ Technologies:
 
 - HTML5
 - CSS3
-- Bootstrap
-- JavaScript
+- Bootstrap 5
+- Bootstrap Icons
+- JavaScript (vanilla, no framework)
 - Django Template Engine
 - Chart.js (for analytics visualizations)
 
@@ -309,7 +390,8 @@ Responsibilities:
 - Submit user forms
 - Dashboard visualization
 - Filtering and search functionality
-- Show AI category suggestions
+- Show AI category suggestions inline
+- Per-row and batch AI accept actions via fetch API (no page reload)
 
 ---
 
@@ -326,9 +408,9 @@ Responsibilities:
 
 - Process HTTP requests
 - Serve server-rendered HTML pages via Django Templates
-- Expose a REST API endpoint for AI category suggestions (AJAX)
+- Expose REST API endpoints for AI category suggestions (AJAX)
 - Handle file uploads (CSV)
-- Manage transactions and categories
+- Manage transactions, categories, import history, and audit logs
 - Perform business logic and financial calculations
 - Serve filtered transaction data
 - Integrate with AI API
@@ -340,13 +422,15 @@ Responsibilities:
 
 Technology:
 
-- MySQL
+- SQLite (development) / MySQL (production target)
 
 Primary entities:
 
 - User
 - Transaction
 - Category
+- AuditLog
+- ImportHistory
 
 ### Key Field Notes
 
@@ -357,11 +441,27 @@ Primary entities:
 - `description`
 - `amount`: stored as Decimal (10, 2) in USD
 - `vendor`
+- `normalized_vendor`: lowercased, whitespace-collapsed vendor (auto-set on save, indexed)
 - `transaction_type`: income or expense (auto-derived from CSV amount sign)
-- `status`: pending or cleared
 - `category`: FK to Category (nullable — unset until user confirms)
 - `ai_suggested_category`: FK to Category, the category suggested by the AI (nullable)
 - `created_at`, `updated_at`
+
+**AuditLog:**
+- `id`
+- `user`: FK to User (SET_NULL on delete)
+- `transaction`: FK to Transaction, nullable (SET_NULL on delete)
+- `action`: one of `import`, `edit`, `delete`, `ai_accepted`
+- `metadata`: JSON field for action-specific context
+- `created_at`
+
+**ImportHistory:**
+- `id`
+- `user`: FK to User
+- `filename`
+- `uploaded_at`
+- `total_rows`, `imported_count`, `duplicate_count`, `invalid_count`
+- `error_details`: JSON list of `{row_num, errors}` per invalid row
 
 ---
 
@@ -369,13 +469,13 @@ Primary entities:
 
 Technology:
 
-- External AI API (e.g., OpenAI API)
+- OpenAI API (`gpt-4o-mini` model)
 
 Responsibilities:
 
-- Analyze transaction descriptions
-- Suggest transaction categories
-- Return recommendations to the backend
+- Analyze transaction descriptions and vendor names
+- Suggest transaction categories from the user's category list
+- Return recommendations to the backend for storage and user review
 
 The AI system functions only as an assistant and does not automatically modify financial data without user confirmation. The backend must handle API errors gracefully and allow all workflows to proceed without AI assistance if the service is unavailable.
 
@@ -383,60 +483,54 @@ The AI system functions only as an assistant and does not automatically modify f
 
 # Testing Requirements
 
-- Unit tests must be written for core business logic: transaction duplicate detection, financial report calculations, and category assignment logic.
+- Unit tests must be written for core business logic: duplicate detection, financial calculations, category assignment, form validation, vendor normalization, audit logging, import history, and access control.
+- Integration tests must cover: CSV export filter behavior, CSV upload creates ImportHistory, safe redirect validation, batch accept behavior.
+- Django's built-in test framework (`python manage.py test`) is used for all automated tests.
 - Each feature step should include a manual QA checklist confirming all functional requirements work end-to-end before moving to the next step.
-- Django's built-in test framework (`python manage.py test`) will be used for automated tests.
 
 ---
 
 # Deployment
 
 - **Primary target:** Local development environment.
-- The application must run locally using `python manage.py runserver` with a locally hosted MySQL instance.
+- The application must run locally using `python manage.py runserver` with a locally hosted database.
 - The project should be structured to support future deployment to a cloud platform (e.g., Railway, Heroku, or a VPS) with minimal configuration changes.
-- Environment-specific settings (database credentials, API keys, email settings) must be stored in environment variables or a `.env` file and never committed to source control.
+- Environment-specific settings (database credentials, API keys) must be stored in environment variables or a `.env` file and never committed to source control.
 
 ---
 
 # Build Roadmap
 
-SmartLedger will be built incrementally. Each step below is independently buildable and testable. Complete and validate each step before moving to the next.
+SmartLedger is built incrementally. Each step below is independently buildable and testable.
 
 ---
 
 ## Step 1 — Project Setup
 
-**Goal:** Get a working Django project connected to MySQL with a base UI shell.
+**Goal:** Get a working Django project connected to a database with a base UI shell.
 
 **Deliverables:**
 - Django project (`smartLedger`) with a `core` app created
-- MySQL database configured and connected via environment variables
-- `requirements.txt` with all initial dependencies:
-  - `django`, `djangorestframework`, `mysqlclient`, `openai`, `python-dotenv`
-- `.env` file for secrets (DB credentials, secret key) — never committed
-- `TEMPLATES['DIRS']` set to a top-level `templates/` folder
+- Database configured and connected via environment variables
+- `requirements.txt` with all initial dependencies
+- `.env` file for secrets — never committed
 - `base.html` — Bootstrap 5 navbar, flash messages, content block
 - Homepage view returning HTTP 200
 - `python manage.py migrate` runs clean
-
-**Test:** Run `python manage.py migrate` successfully. Load the homepage at `http://127.0.0.1:8000/` and confirm it returns HTTP 200 with the Bootstrap navbar visible.
 
 ---
 
 ## Step 2 — User Authentication
 
-**Goal:** Users can register, log in, log out, reset their password, and edit their profile.
+**Goal:** Users can register, log in, log out, and edit their profile.
 
 **Deliverables:**
-- Register view with `RegisterForm` (username, email, password1, password2)
+- Register view with `RegisterForm`
 - Login and logout views using Django's built-in auth system
-- Password reset flow using Django's built-in password reset views (email sent to console via `console` email backend)
-- Profile edit page (first name, last name, email)
-- `post_save` signal on `User` wired in `core/apps.py` — seeds default categories for new users (used in Step 3)
+- Password reset flow (email sent to console)
+- Profile edit page
+- `post_save` signal seeds default categories for new users
 - All routes protected by `@login_required` except `/register/` and `/login/`
-- Navbar shows logged-in username and a logout link
-
-**Test:** Register a new account → log in → update profile → log out → use "Forgot Password" (check terminal for reset link) → reset password → log back in.
 
 ---
 
@@ -445,14 +539,8 @@ SmartLedger will be built incrementally. Each step below is independently builda
 **Goal:** Users can manage the categories used to label transactions.
 
 **Deliverables:**
-- `Category` model: `user` (FK), `name`, `type` (income / expense), `created_at`
-- CRUD DRF views: list, create, edit, delete — all scoped to `request.user`
-- Default categories seeded per user on registration via `post_save` signal:
-  - Revenue (income), Consulting (income)
-  - Software (expense), Utilities (expense), Office Supplies (expense), Meals (expense), Travel (expense), Other (expense)
-- Categories from other users are never visible or accessible
-
-**Test:** Register two separate accounts. Confirm each has the default categories. Create a custom category on account 1, edit it, delete it. Confirm account 2 cannot see account 1's categories.
+- `Category` model with user scoping, type (income/expense), default seeding
+- CRUD views for categories, scoped to `request.user`
 
 ---
 
@@ -461,20 +549,10 @@ SmartLedger will be built incrementally. Each step below is independently builda
 **Goal:** Users can manually log transactions and bulk-import them via CSV.
 
 **Deliverables:**
-- `Transaction` model with all fields: `user`, `date`, `description`, `amount` (Decimal 10,2), `vendor`, `transaction_type`, `status`, `category` (FK nullable), `ai_suggested_category` (FK nullable), `created_at`, `updated_at`
-- CRUD DRF views: list, add, edit, delete — all scoped to `request.user`
-- Transaction list with:
-  - Filters: date range, category, transaction type, status, vendor
-  - Sort: date, amount, category
-- CSV upload flow:
-  1. Upload form accepts a `.csv` file
-  2. Backend parses the file expecting headers: `Date`, `Description`, `Amount`, `Vendor`
-  3. Negative `Amount` → `transaction_type = expense`; positive → `income`
-  4. Duplicate detection: flag rows where `date + amount + description` matches an existing transaction for the user
-  5. Preview page shows all rows with duplicate warnings
-  6. User confirms → non-duplicate rows are imported
-
-**Test:** Add a transaction manually. Upload a CSV file. Re-upload the same CSV → all rows flagged as duplicates on the preview page. Apply each filter and confirm results. Sort by date, amount, and category.
+- `Transaction` model with all fields
+- CRUD views for transactions
+- CSV upload with duplicate detection, ImportHistory creation, and error reporting
+- Transaction list with filters, sorting, and pagination
 
 ---
 
@@ -483,38 +561,67 @@ SmartLedger will be built incrementally. Each step below is independently builda
 **Goal:** Users can get AI-suggested categories for transactions.
 
 **Deliverables:**
-- `core/services/ai_service.py`:
-  - `suggest_category(description, available_categories)` → returns a category name string or `None`
-  - `batch_suggest(transactions, available_categories)` → returns `{transaction_id: category_name}`
-  - All exceptions caught gracefully — never crashes the app
-- DRF API endpoints:
-  - `POST /api/suggest-category/` — single suggestion, called via AJAX from the transaction form
-  - `POST /api/batch-suggest/` — batch suggestion, called via AJAX from the CSV preview/import page
-- Transaction add/edit form: "Suggest Category" button that calls the single endpoint and pre-fills the category dropdown
-- CSV post-import page: "Suggest Categories" button that calls the batch endpoint and populates suggestions for user review and confirmation
-- `OPENAI_API_KEY` loaded from `.env`
-- If the API is unavailable or returns an error: display a friendly inline message, do not block the form
-
-**Test:** Add a transaction → click "Suggest Category" → verify the category dropdown is pre-filled. Remove the API key from `.env` → confirm a graceful error message appears and the form is still usable. Upload a CSV → use "Suggest Categories" → confirm batch suggestions populate correctly.
+- `core/services/ai_service.py` with `suggest_category` and `batch_suggest`
+- Per-row Suggest button on transaction list
+- "Suggest All Uncategorized" batch button on transaction list
+- Suggest button on transaction add/edit form
+- Graceful error handling when AI is unavailable
 
 ---
 
-## Step 6 — Financial Dashboard, Reports, and Vendor Insights
+## Step 6 — Financial Dashboard and Vendor Insights
 
 **Goal:** Provide users with actionable insights into their financial activity.
 
 **Deliverables:**
-- Dashboard page (`/dashboard/`) showing:
-  - **KPI cards:** Total Income, Total Expenses, Net Cash Flow (income − expenses)
-  - **Uncategorized alert:** count of transactions with no category, with a link to filter them
-  - **Recent transactions:** last 10 transactions in a table
-  - **Pie chart:** expense breakdown by category (Chart.js)
-  - **Bar/line chart:** monthly income vs expenses (Chart.js)
-  - **Bar chart:** top 5 vendors by total spend (Chart.js)
-  - **Date range filter:** optional filter applied to all KPI and chart calculations (default: all-time)
-- CSV export: export the currently filtered transaction list as a downloadable `.csv` file
+- Dashboard with KPI cards, charts (doughnut, bar, line), top vendors, recent transactions
+- Date range filter on dashboard
+- CSV export of filtered transactions
+- Vendor normalization (`normalized_vendor` field) for consistent grouping
 
-**Test:** Upload a set of transactions across multiple categories and vendors. Verify dashboard KPI totals match the raw data. Apply a date filter and confirm totals update. Check that the category pie chart, monthly chart, and vendor chart all reflect the data. Export to CSV and verify the file contents. Confirm uncategorized transactions are flagged with the correct count.
+---
+
+## Step 7 — Preserve Filter and Page State
+
+**Goal:** Navigating to edit/delete and returning preserves the user's active filter and page.
+
+**Deliverables:**
+- `back` query parameter threaded through edit and delete flows
+- `_safe_back()` helper validates local-path-only redirects (rejects external and protocol-relative URLs)
+- Pagination links preserve filter query string
+
+---
+
+## Step 8 — Import Error Reporting and Import History
+
+**Goal:** Users can review what happened after each CSV upload.
+
+**Deliverables:**
+- `ImportHistory` model with full upload statistics and per-row error details
+- Import History list page and detail page
+- Link in Transactions navbar dropdown
+- Access control: users can only see their own import history
+
+---
+
+## Step 9 — Audit Logging
+
+**Goal:** Maintain a traceable audit trail for all significant data changes.
+
+**Deliverables:**
+- `AuditLog` model with `action`, `user`, `transaction` FK, `metadata`
+- Audit entries created for: edit, delete, CSV import, single AI accept, batch AI accept
+
+---
+
+## Step 10 — UI and Workflow Improvements
+
+**Goal:** Improve date input consistency and add bulk AI acceptance.
+
+**Deliverables:**
+- Replace all browser date pickers with typed text inputs in `YYYY-MM-DD` format via shared `DateTextInput` widget
+- Cross-field filter validation: `date_from > date_to` and `amount_min > amount_max` are rejected with clear messages
+- "Batch Accept Suggestions" button: accepts all existing AI suggestions at once for the current user, logs a single audit entry, redirects back preserving filter state
 
 ---
 
@@ -525,4 +632,5 @@ The following features are noted for potential future development and are not in
 - Invoice management
 - Customer management
 - Multi-currency support
+- Transaction status (pending / cleared) — removed; all imported transactions are considered final
 - Cloud deployment (the project structure supports it via `.env` configuration)

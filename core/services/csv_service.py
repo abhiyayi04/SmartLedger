@@ -117,23 +117,3 @@ def detect_duplicates(rows, user):
 
     return rows
 
-
-def serialize_rows(rows):
-    """Convert parsed rows to JSON-safe dicts for session storage."""
-    result = []
-    for row in rows:
-        result.append({
-            'row_num': row['row_num'],
-            'date': row['date'].isoformat() if row['date'] else None,
-            'date_str': row['date_str'],
-            'description': row['description'],
-            'amount': str(row['amount']) if row['amount'] is not None else None,
-            'amount_str': row['amount_str'],
-            'vendor': row['vendor'],
-            'transaction_type': row['transaction_type'],
-            'errors': row['errors'],
-            'is_duplicate': row['is_duplicate'],
-        })
-    return result
-
-

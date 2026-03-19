@@ -14,9 +14,11 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+import logging
 from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm, DashboardFilterForm
-from .models import AuditLog, Category, ImportHistory, Transaction
-from .utils import audit
+from .models import Category, ImportHistory, Transaction
+
+logger = logging.getLogger(__name__)
 
 
 def homepage(request):
@@ -246,8 +248,6 @@ def transaction_edit(request, pk):
         form = TransactionForm(request.POST, instance=transaction, user=request.user)
         if form.is_valid():
             t = form.save()
-            audit(request.user, AuditLog.EDIT, transaction=t,
-                  metadata={'description': t.description, 'amount': str(t.amount)})
             messages.success(request, 'Transaction updated.')
             return redirect(back or 'transaction_list')
     else:
@@ -262,8 +262,6 @@ def transaction_delete(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
     back = _safe_back(request.GET.get('back', '') or request.POST.get('back', ''))
     if request.method == 'POST':
-        audit(request.user, AuditLog.DELETE,
-              metadata={'description': transaction.description, 'amount': str(transaction.amount), 'date': str(transaction.date)})
         transaction.delete()
         messages.success(request, 'Transaction deleted.')
         return redirect(back or 'transaction_list')
@@ -312,12 +310,6 @@ def csv_upload(request):
                     invalid_count=error_count,
                     error_details=error_details,
                 )
-                if len(to_import) > 0:
-                    audit(request.user, AuditLog.IMPORT, metadata={
-                        'filename': request.FILES['file'].name,
-                        'imported_count': len(to_import),
-                        'import_history_id': history.pk,
-                    })
                 return redirect('import_history_detail', pk=history.pk)
             except ValueError as e:
                 messages.error(request, str(e))
@@ -417,11 +409,6 @@ def batch_accept_suggestions(request):
         for t in eligible:
             Transaction.objects.filter(pk=t.pk).update(category_id=t.ai_suggested_category_id)
 
-        audit(request.user, AuditLog.AI_ACCEPTED, metadata={
-            'batch': True,
-            'count': count,
-            'transaction_ids': ids,
-        })
         messages.success(
             request,
             f'Accepted {count} AI suggestion{"s" if count != 1 else ""}.',
@@ -559,8 +546,5 @@ def api_accept_suggestion(request, pk):
 
     transaction.category = transaction.ai_suggested_category
     transaction.save(update_fields=['category'])
-
-    audit(request.user, AuditLog.AI_ACCEPTED, transaction=transaction,
-          metadata={'category': transaction.category.name})
 
     return Response({'category_name': transaction.category.name})

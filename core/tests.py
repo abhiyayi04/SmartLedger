@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.contrib.auth.models import User
 from django.urls import reverse
 
-from .models import AuditLog, Category, ImportHistory, Transaction
+from .models import Category, ImportHistory, Transaction
 from .forms import DashboardFilterForm, TransactionFilterForm, TransactionForm
 from .services.csv_service import detect_duplicates
 
@@ -527,15 +527,6 @@ class BatchAcceptSuggestionsTests(TestCase):
         )
         self.assertContains(response, 'No pending AI suggestions')
 
-    def test_batch_accept_creates_audit_log(self):
-        t = make_transaction(self.user)
-        t.ai_suggested_category = self.cat
-        t.save()
-        before = AuditLog.objects.filter(user=self.user, action=AuditLog.AI_ACCEPTED).count()
-        self.client.post(reverse('batch_accept_suggestions'), {'back': '/transactions/'})
-        after = AuditLog.objects.filter(user=self.user, action=AuditLog.AI_ACCEPTED).count()
-        self.assertEqual(after, before + 1)
-
     def test_batch_accept_redirects_to_back_url(self):
         response = self.client.post(
             reverse('batch_accept_suggestions'), {'back': '/transactions/?date_from=2024-01-01'}
@@ -545,36 +536,6 @@ class BatchAcceptSuggestionsTests(TestCase):
     def test_batch_accept_get_redirects(self):
         response = self.client.get(reverse('batch_accept_suggestions'))
         self.assertRedirects(response, reverse('transaction_list'))
-
-    def test_batch_accept_audit_log_is_one_entry_for_bulk(self):
-        """Batch accept creates exactly ONE audit log entry, not one per transaction."""
-        t1 = make_transaction(self.user, description='Tx 1')
-        t2 = make_transaction(self.user, description='Tx 2')
-        t1.ai_suggested_category = self.cat
-        t2.ai_suggested_category = self.cat
-        t1.save()
-        t2.save()
-        before = AuditLog.objects.filter(user=self.user, action=AuditLog.AI_ACCEPTED).count()
-        self.client.post(reverse('batch_accept_suggestions'), {'back': '/transactions/'})
-        after = AuditLog.objects.filter(user=self.user, action=AuditLog.AI_ACCEPTED).count()
-        # The whole batch produces a single audit entry (not one per row)
-        self.assertEqual(after - before, 1)
-
-    def test_batch_accept_audit_log_metadata(self):
-        """Batch audit log metadata includes batch flag, count, and transaction ids."""
-        t1 = make_transaction(self.user, description='Tx A')
-        t2 = make_transaction(self.user, description='Tx B')
-        t1.ai_suggested_category = self.cat
-        t2.ai_suggested_category = self.cat
-        t1.save()
-        t2.save()
-        self.client.post(reverse('batch_accept_suggestions'), {'back': '/transactions/'})
-        entry = AuditLog.objects.filter(
-            user=self.user, action=AuditLog.AI_ACCEPTED
-        ).latest('created_at')
-        self.assertTrue(entry.metadata.get('batch'))
-        self.assertEqual(entry.metadata.get('count'), 2)
-        self.assertCountEqual(entry.metadata.get('transaction_ids', []), [t1.pk, t2.pk])
 
 
 # ---------------------------------------------------------------------------
@@ -797,71 +758,7 @@ class ImportHistoryTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 12. AuditLog coverage for important actions
-# ---------------------------------------------------------------------------
-
-class AuditLogCoverageTests(TestCase):
-    def setUp(self):
-        self.user = make_user()
-        self.client.login(username='testuser', password='testpass123')
-        self.cat = make_category(self.user, name='CustomCat')
-
-    def test_edit_creates_audit_log_with_correct_action_and_user(self):
-        t = make_transaction(self.user)
-        before = AuditLog.objects.filter(user=self.user, action=AuditLog.EDIT).count()
-        self.client.post(reverse('transaction_edit', args=[t.pk]), {
-            'date': '2024-01-15',
-            'description': 'Updated',
-            'amount': '150.00',
-            'vendor': 'ACME',
-            'transaction_type': Transaction.EXPENSE,
-        })
-        after = AuditLog.objects.filter(user=self.user, action=AuditLog.EDIT).count()
-        self.assertEqual(after - before, 1)
-        entry = AuditLog.objects.filter(user=self.user, action=AuditLog.EDIT).latest('created_at')
-        self.assertEqual(entry.user, self.user)
-        self.assertEqual(entry.transaction, t)
-
-    def test_delete_creates_audit_log_with_correct_action(self):
-        t = make_transaction(self.user)
-        before = AuditLog.objects.filter(user=self.user, action=AuditLog.DELETE).count()
-        self.client.post(reverse('transaction_delete', args=[t.pk]))
-        after = AuditLog.objects.filter(user=self.user, action=AuditLog.DELETE).count()
-        self.assertEqual(after - before, 1)
-        entry = AuditLog.objects.filter(user=self.user, action=AuditLog.DELETE).latest('created_at')
-        self.assertEqual(entry.user, self.user)
-        # Transaction is deleted; FK is SET_NULL so it becomes None
-        self.assertIsNone(entry.transaction)
-
-    def test_csv_import_creates_audit_log(self):
-        f = _make_csv_file("Date,Description,Amount,Vendor\n2024-01-15,Import tx,-100.00,Amazon\n")
-        before = AuditLog.objects.filter(user=self.user, action=AuditLog.IMPORT).count()
-        self.client.post(reverse('csv_upload'), {'file': f})
-        after = AuditLog.objects.filter(user=self.user, action=AuditLog.IMPORT).count()
-        self.assertEqual(after - before, 1)
-        entry = AuditLog.objects.filter(user=self.user, action=AuditLog.IMPORT).latest('created_at')
-        self.assertEqual(entry.user, self.user)
-
-    def test_single_accept_creates_audit_log_with_transaction_fk(self):
-        t = make_transaction(self.user)
-        t.ai_suggested_category = self.cat
-        t.save()
-        before = AuditLog.objects.filter(user=self.user, action=AuditLog.AI_ACCEPTED).count()
-        self.client.post(
-            reverse('api_accept_suggestion', args=[t.pk]), content_type='application/json'
-        )
-        after = AuditLog.objects.filter(user=self.user, action=AuditLog.AI_ACCEPTED).count()
-        self.assertEqual(after - before, 1)
-        entry = AuditLog.objects.filter(
-            user=self.user, action=AuditLog.AI_ACCEPTED
-        ).latest('created_at')
-        self.assertEqual(entry.user, self.user)
-        # Single accept sets the transaction FK
-        self.assertEqual(entry.transaction, t)
-
-
-# ---------------------------------------------------------------------------
-# 13. Vendor normalization
+# 12. Vendor normalization
 # ---------------------------------------------------------------------------
 
 class VendorNormalizationTests(TestCase):
