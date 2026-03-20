@@ -262,29 +262,7 @@ The system shall:
 
 ---
 
-## 9. Audit Logging
-
-### Description
-
-The system must maintain an audit trail of significant user actions for accountability and traceability.
-
-### Functional Requirements
-
-The system shall create an `AuditLog` entry for each of the following actions:
-
-| Action | Trigger | Transaction FK |
-|---|---|---|
-| `import` | Successful CSV upload (at least one row imported) | None (bulk) |
-| `edit` | Transaction saved via edit form | Set to the edited transaction |
-| `delete` | Transaction deleted | None (SET_NULL after deletion) |
-| `ai_accepted` | Single-row AI suggestion accepted via Accept button | Set to the accepted transaction |
-| `ai_accepted` | Batch Accept Suggestions completed | None (bulk); metadata includes `batch: true`, `count`, `transaction_ids` |
-
-Each log entry stores: `user`, `transaction` (nullable FK), `action`, `metadata` (JSON), `created_at`.
-
----
-
-## 10. Date Input Format
+## 9. Date Input Format
 
 ### Description
 
@@ -483,7 +461,7 @@ The AI system functions only as an assistant and does not automatically modify f
 
 # Testing Requirements
 
-- Unit tests must be written for core business logic: duplicate detection, financial calculations, category assignment, form validation, vendor normalization, audit logging, import history, and access control.
+- Unit tests must be written for core business logic: duplicate detection, financial calculations, category assignment, form validation, vendor normalization, import history, and access control.
 - Integration tests must cover: CSV export filter behavior, CSV upload creates ImportHistory, safe redirect validation, batch accept behavior.
 - Django's built-in test framework (`python manage.py test`) is used for all automated tests.
 - Each feature step should include a manual QA checklist confirming all functional requirements work end-to-end before moving to the next step.
@@ -604,17 +582,7 @@ SmartLedger is built incrementally. Each step below is independently buildable a
 
 ---
 
-## Step 9 — Audit Logging
-
-**Goal:** Maintain a traceable audit trail for all significant data changes.
-
-**Deliverables:**
-- `AuditLog` model with `action`, `user`, `transaction` FK, `metadata`
-- Audit entries created for: edit, delete, CSV import, single AI accept, batch AI accept
-
----
-
-## Step 10 — UI and Workflow Improvements
+## Step 9 — UI and Workflow Improvements
 
 **Goal:** Improve date input consistency and add bulk AI acceptance.
 
@@ -632,5 +600,4 @@ The following features are noted for potential future development and are not in
 - Invoice management
 - Customer management
 - Multi-currency support
-- Transaction status (pending / cleared) — removed; all imported transactions are considered final
 - Cloud deployment (the project structure supports it via `.env` configuration)
