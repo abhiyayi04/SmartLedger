@@ -18,7 +18,6 @@ urlpatterns = [
     path('transactions/imports/<int:pk>/', views.import_history_detail, name='import_history_detail'),
     # AI API
     path('api/suggest-category/', views.api_suggest_category, name='api_suggest_category'),
-    path('api/batch-suggest/', views.api_batch_suggest, name='api_batch_suggest'),
     path('api/suggest-uncategorized/', views.api_suggest_uncategorized, name='api_suggest_uncategorized'),
     path('api/suggest-for-transaction/<int:pk>/', views.api_suggest_for_transaction, name='api_suggest_for_transaction'),
     path('api/accept-suggestion/<int:pk>/', views.api_accept_suggestion, name='api_accept_suggestion'),

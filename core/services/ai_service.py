@@ -14,7 +14,10 @@ def suggest_category(description, vendor, available_categories, transaction_type
                       whose type matches are considered.
     Returns the matched category name string, or None if unavailable/no match.
     """
+    logger.info("suggest_category started transaction_type=%s", transaction_type)
+
     if not settings.OPENAI_API_KEY:
+        logger.warning("suggest_category skipped: OPENAI_API_KEY not set")
         return None
 
     # Filter to matching type if provided
@@ -23,7 +26,10 @@ def suggest_category(description, vendor, available_categories, transaction_type
     else:
         candidates = list(available_categories)
 
+    logger.info("suggest_category candidate_count=%s transaction_type=%s", len(candidates), transaction_type)
+
     if not candidates:
+        logger.info("suggest_category no candidates available returning None")
         return None
 
     valid_names = {c['name'] for c in candidates}
@@ -39,6 +45,8 @@ def suggest_category(description, vendor, available_categories, transaction_type
     try:
         from openai import OpenAI
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+        logger.info("suggest_category calling OpenAI API candidate_count=%s", len(candidates))
 
         response = client.chat.completions.create(
             model='gpt-4o-mini',
@@ -59,7 +67,9 @@ def suggest_category(description, vendor, available_categories, transaction_type
         )
 
         suggested = response.choices[0].message.content.strip()
-        return suggested if suggested in valid_names else None
+        matched = suggested if suggested in valid_names else None
+        logger.info("suggest_category OpenAI response=%r matched=%s", suggested, matched is not None)
+        return matched
 
     except Exception as exc:
         logger.warning('AI category suggestion failed: %s', exc)
@@ -74,6 +84,9 @@ def batch_suggest(rows, available_categories):
           and optionally 'transaction_type'.
     Returns: dict {str(index): category_name} for rows that got a match.
     """
+    row_count = len(rows)
+    logger.info("batch_suggest started row_count=%s", row_count)
+
     results = {}
     for row in rows:
         name = suggest_category(
@@ -84,4 +97,6 @@ def batch_suggest(rows, available_categories):
         )
         if name:
             results[str(row['index'])] = name
+
+    logger.info("batch_suggest completed row_count=%s matched_count=%s", row_count, len(results))
     return results

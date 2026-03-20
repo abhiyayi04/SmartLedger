@@ -89,9 +89,6 @@ LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/login/'
 
-# Email backend — prints to console for local dev
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-
 # Map Django's 'error' message tag to Bootstrap's 'danger' class
 MESSAGE_TAGS = {
     message_constants.ERROR: 'danger',

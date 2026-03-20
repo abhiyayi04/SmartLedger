@@ -4,10 +4,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import transaction as db_transaction
-from django.db.models import Sum
-from django.db.models.functions import TruncMonth
+from django.db.models import F
 from django.http import HttpResponse
-from collections import OrderedDict
 from decimal import Decimal
 import csv as csv_module
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -15,8 +13,9 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 import logging
-from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm, DashboardFilterForm
+from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm
 from .models import Category, ImportHistory, Transaction
+from .services.dashboard_service import dashboard
 
 logger = logging.getLogger(__name__)
 
@@ -53,102 +52,27 @@ def profile_edit(request):
     return render(request, 'auth/profile.html', {'form': form})
 
 
-@login_required
-def dashboard(request):
-    filter_form = DashboardFilterForm(request.GET or None)
-    date_from = None
-    date_to = None
-    if filter_form.is_valid():
-        date_from = filter_form.cleaned_data.get('date_from')
-        date_to = filter_form.cleaned_data.get('date_to')
-
-    qs = Transaction.objects.filter(user=request.user)
-    if date_from:
-        qs = qs.filter(date__gte=date_from)
-    if date_to:
-        qs = qs.filter(date__lte=date_to)
-
-    # KPI totals
-    income_total = qs.filter(transaction_type=Transaction.INCOME).aggregate(
-        total=Sum('amount'))['total'] or Decimal('0')
-    expense_total = qs.filter(transaction_type=Transaction.EXPENSE).aggregate(
-        total=Sum('amount'))['total'] or Decimal('0')
-    net_cash_flow = income_total - expense_total
-
-    # Uncategorized (always all-time so the alert is always visible)
-    uncategorized_count = Transaction.objects.filter(
-        user=request.user, category__isnull=True).count()
-
-    # Recent 10 transactions
-    recent_transactions = qs.select_related('category').order_by('-date', '-created_at')[:10]
-
-    # Expense by category for pie chart
-    expense_by_cat = (
-        qs.filter(transaction_type=Transaction.EXPENSE, category__isnull=False)
-        .values('category__name')
-        .annotate(total=Sum('amount'))
-        .order_by('-total')
-    )
-
-    # Monthly income vs expense for bar chart
-    monthly_qs = (
-        qs.annotate(month=TruncMonth('date'))
-        .values('month', 'transaction_type')
-        .annotate(total=Sum('amount'))
-        .order_by('month')
-    )
-    monthly_data = OrderedDict()
-    for item in monthly_qs:
-        key = item['month'].strftime('%b %Y')
-        if key not in monthly_data:
-            monthly_data[key] = {'income': 0.0, 'expense': 0.0}
-        monthly_data[key][item['transaction_type']] = float(item['total'])
-
-    # Top 5 vendors by expense spend (group by normalized vendor for consistency)
-    top_vendors = (
-        qs.filter(transaction_type=Transaction.EXPENSE)
-        .exclude(normalized_vendor='')
-        .values('normalized_vendor')
-        .annotate(total=Sum('amount'))
-        .order_by('-total')[:5]
-    )
-
-    chart_data = {
-        'category_pie': {
-            'labels': [item['category__name'] for item in expense_by_cat],
-            'data': [float(item['total']) for item in expense_by_cat],
-        },
-        'monthly': {
-            'labels': list(monthly_data.keys()),
-            'income': [monthly_data[k]['income'] for k in monthly_data],
-            'expense': [monthly_data[k]['expense'] for k in monthly_data],
-        },
-        'vendors': {
-            'labels': [item['normalized_vendor'] for item in top_vendors],
-            'data': [float(item['total']) for item in top_vendors],
-        },
-    }
-
-    return render(request, 'dashboard/index.html', {
-        'income_total': income_total,
-        'expense_total': expense_total,
-        'net_cash_flow': net_cash_flow,
-        'uncategorized_count': uncategorized_count,
-        'recent_transactions': recent_transactions,
-        'chart_data': chart_data,
-        'date_from': date_from.isoformat() if date_from else '',
-        'date_to': date_to.isoformat() if date_to else '',
-        'total_transactions': qs.count(),
-    })
-
 
 @login_required
 def export_csv(request):
+    logger.info("export_csv started user_id=%s params=%s", request.user.id, dict(request.GET))
+
     qs = Transaction.objects.filter(user=request.user).select_related('category').order_by('-date')
     filter_form = TransactionFilterForm(request.GET or None, user=request.user)
 
     if filter_form.is_valid():
         d = filter_form.cleaned_data
+        logger.info(
+            "export_csv filter valid user_id=%s has_date_from=%s has_date_to=%s has_category=%s has_type=%s has_vendor=%s has_amount_min=%s has_amount_max=%s",
+            request.user.id,
+            bool(d.get('date_from')),
+            bool(d.get('date_to')),
+            bool(d.get('category')),
+            bool(d.get('type')),
+            bool(d.get('vendor')),
+            d.get('amount_min') is not None,
+            d.get('amount_max') is not None,
+        )
         if d.get('date_from'):
             qs = qs.filter(date__gte=d['date_from'])
         if d.get('date_to'):
@@ -163,6 +87,11 @@ def export_csv(request):
             qs = qs.filter(amount__gte=d['amount_min'])
         if d.get('amount_max') is not None:
             qs = qs.filter(amount__lte=d['amount_max'])
+    else:
+        logger.info("export_csv filter invalid or empty user_id=%s errors=%s", request.user.id, filter_form.errors)
+
+    row_count = qs.count()
+    logger.info("export_csv writing rows user_id=%s row_count=%s", request.user.id, row_count)
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="transactions.csv"'
@@ -178,6 +107,8 @@ def export_csv(request):
             t.get_transaction_type_display(),
             t.category.name if t.category else '',
         ])
+
+    logger.info("export_csv completed user_id=%s rows_written=%s", request.user.id, row_count)
     return response
 
 
@@ -270,13 +201,25 @@ def transaction_delete(request, pk):
 
 @login_required
 def csv_upload(request):
+    logger.info("csv_upload started user_id=%s method=%s", request.user.id, request.method)
+
     if request.method == 'POST':
+        file_present = 'file' in request.FILES
+        logger.info("csv_upload file_present=%s user_id=%s", file_present, request.user.id)
+
         form = CSVUploadForm(request.POST, request.FILES)
         if form.is_valid():
+            filename = request.FILES['file'].name
+            logger.info("csv_upload form valid filename=%s user_id=%s", filename, request.user.id)
+
             from .services.csv_service import parse_csv, detect_duplicates
             try:
                 rows = parse_csv(request.FILES['file'])
+                logger.info("csv_upload parse_csv completed filename=%s total_rows=%s user_id=%s", filename, len(rows), request.user.id)
+
                 rows = detect_duplicates(rows, request.user)
+                logger.info("csv_upload detect_duplicates completed filename=%s user_id=%s", filename, request.user.id)
+
                 from .models import _normalize_vendor as _nv
                 to_import = [
                     Transaction(
@@ -297,9 +240,17 @@ def csv_upload(request):
                     for r in rows if r['errors']
                 ]
 
+                logger.info(
+                    "csv_upload row summary user_id=%s filename=%s total_rows=%s to_import=%s duplicate_count=%s error_count=%s",
+                    request.user.id, filename, len(rows), len(to_import), duplicate_count, error_count,
+                )
+
                 if to_import:
                     with db_transaction.atomic():
                         Transaction.objects.bulk_create(to_import)
+                    logger.info("csv_upload bulk_create completed user_id=%s inserted=%s filename=%s", request.user.id, len(to_import), filename)
+                else:
+                    logger.info("csv_upload bulk_create skipped nothing to import user_id=%s filename=%s", request.user.id, filename)
 
                 history = ImportHistory.objects.create(
                     user=request.user,
@@ -310,23 +261,39 @@ def csv_upload(request):
                     invalid_count=error_count,
                     error_details=error_details,
                 )
+                logger.info("csv_upload import history created history_id=%s user_id=%s filename=%s", history.pk, request.user.id, filename)
+                logger.info("csv_upload redirecting to import_history_detail history_id=%s user_id=%s", history.pk, request.user.id)
                 return redirect('import_history_detail', pk=history.pk)
             except ValueError as e:
+                logger.warning("csv_upload ValueError user_id=%s filename=%s error=%s", request.user.id, request.FILES['file'].name, e)
                 messages.error(request, str(e))
+        else:
+            logger.warning("csv_upload form invalid user_id=%s errors=%s", request.user.id, form.errors)
     else:
         form = CSVUploadForm()
+
+    logger.info("csv_upload rendering upload form user_id=%s", request.user.id)
     return render(request, 'transactions/csv_upload.html', {'form': form})
 
 
 @login_required
 def import_history_list(request):
+    logger.info("import_history_list started user_id=%s", request.user.id)
     history = ImportHistory.objects.filter(user=request.user)
+    record_count = history.count()
+    logger.info("import_history_list completed user_id=%s record_count=%s", request.user.id, record_count)
     return render(request, 'transactions/import_history_list.html', {'history': history})
 
 
 @login_required
 def import_history_detail(request, pk):
+    logger.info("import_history_detail started user_id=%s history_id=%s", request.user.id, pk)
     record = get_object_or_404(ImportHistory, pk=pk, user=request.user)
+    logger.info(
+        "import_history_detail record loaded history_id=%s user_id=%s imported_count=%s duplicate_count=%s invalid_count=%s",
+        pk, request.user.id, record.imported_count, record.duplicate_count, record.invalid_count,
+    )
+    logger.info("import_history_detail completed user_id=%s history_id=%s", request.user.id, pk)
     return render(request, 'transactions/import_history_detail.html', {'record': record})
 
 
@@ -389,33 +356,36 @@ def batch_accept_suggestions(request):
       - ai_suggested_category is not null
     Does NOT generate new suggestions. Does NOT overwrite existing categories.
     """
+    logger.info("batch_accept_suggestions started user_id=%s method=%s", request.user.id, request.method)
+
     if request.method != 'POST':
+        logger.warning("batch_accept_suggestions rejected non-POST user_id=%s method=%s", request.user.id, request.method)
         return redirect('transaction_list')
 
     back = _safe_back(request.POST.get('back', ''))
 
-    eligible = list(
-        Transaction.objects.filter(
-            user=request.user,
-            category__isnull=True,
-            ai_suggested_category__isnull=False,
-        ).select_related('ai_suggested_category')
+    qs = Transaction.objects.filter(
+        user=request.user,
+        category__isnull=True,
+        ai_suggested_category__isnull=False,
     )
 
-    count = len(eligible)
+    count = qs.count()
+    logger.info("batch_accept_suggestions eligible_count=%s user_id=%s", count, request.user.id)
+
     if count:
-        ids = [t.pk for t in eligible]
-        # Bulk update: set category_id = ai_suggested_category_id for each row
-        for t in eligible:
-            Transaction.objects.filter(pk=t.pk).update(category_id=t.ai_suggested_category_id)
+        qs.update(category_id=F('ai_suggested_category_id'))
+        logger.info("batch_accept_suggestions updated user_id=%s updated_count=%s", request.user.id, count)
 
         messages.success(
             request,
             f'Accepted {count} AI suggestion{"s" if count != 1 else ""}.',
         )
     else:
+        logger.info("batch_accept_suggestions no eligible transactions user_id=%s", request.user.id)
         messages.info(request, 'No pending AI suggestions to accept.')
 
+    logger.info("batch_accept_suggestions completed user_id=%s", request.user.id)
     return redirect(back or 'transaction_list')
 
 
@@ -423,45 +393,29 @@ def batch_accept_suggestions(request):
 @authentication_classes([SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def api_suggest_category(request):
+    logger.info("api_suggest_category started user_id=%s", request.user.id)
+
     description = request.data.get('description', '').strip()
     vendor = request.data.get('vendor', '').strip()
 
     if not description:
+        logger.warning("api_suggest_category rejected: missing description user_id=%s", request.user.id)
         return Response({'error': 'description is required'}, status=400)
 
     categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+    logger.info("api_suggest_category category_count=%s user_id=%s", len(categories), request.user.id)
+
     cat_map = {c['name']: c['id'] for c in categories}
 
     from .services.ai_service import suggest_category
     name = suggest_category(description, vendor, categories)
 
     if name is None:
+        logger.info("api_suggest_category no suggestion returned user_id=%s", request.user.id)
         return Response({'suggestion': None})
 
+    logger.info("api_suggest_category suggestion=%r category_id=%s user_id=%s", name, cat_map.get(name), request.user.id)
     return Response({'suggestion': name, 'category_id': cat_map.get(name)})
-
-
-@api_view(['POST'])
-@authentication_classes([SessionAuthentication])
-@permission_classes([IsAuthenticated])
-def api_batch_suggest(request):
-    rows = request.data.get('rows', [])
-
-    if not rows:
-        return Response({'suggestions': {}})
-
-    categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
-    cat_map = {c['name']: c['id'] for c in categories}
-
-    from .services.ai_service import batch_suggest
-    names = batch_suggest(rows, categories)
-
-    suggestions = {
-        idx: {'name': name, 'category_id': cat_map.get(name)}
-        for idx, name in names.items()
-    }
-
-    return Response({'suggestions': suggestions})
 
 
 @api_view(['POST'])
@@ -473,6 +427,8 @@ def api_suggest_uncategorized(request):
     and no existing ai_suggested_category. Saves suggestions to the DB and
     returns {pk: {name, category_id}} for the caller to update the UI.
     """
+    logger.info("api_suggest_uncategorized started user_id=%s", request.user.id)
+
     qs = Transaction.objects.filter(
         user=request.user,
         category__isnull=True,
@@ -481,10 +437,15 @@ def api_suggest_uncategorized(request):
 
     rows = [{'index': t['id'], 'description': t['description'], 'vendor': t['vendor'] or ''} for t in qs]
 
+    logger.info("api_suggest_uncategorized eligible_row_count=%s user_id=%s", len(rows), request.user.id)
+
     if not rows:
+        logger.info("api_suggest_uncategorized no eligible transactions user_id=%s", request.user.id)
         return Response({'suggestions': {}})
 
     categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+    logger.info("api_suggest_uncategorized category_count=%s user_id=%s", len(categories), request.user.id)
+
     cat_map = {c['name']: c['id'] for c in categories}
 
     from .services.ai_service import batch_suggest
@@ -499,6 +460,7 @@ def api_suggest_uncategorized(request):
             )
             suggestions[pk_str] = {'name': name, 'category_id': cat_id}
 
+    logger.info("api_suggest_uncategorized completed user_id=%s saved_count=%s", request.user.id, len(suggestions))
     return Response({'suggestions': suggestions})
 
 
@@ -507,12 +469,17 @@ def api_suggest_uncategorized(request):
 @permission_classes([IsAuthenticated])
 def api_suggest_for_transaction(request, pk):
     """Run AI suggestion for a single existing transaction and save it to the DB."""
+    logger.info("api_suggest_for_transaction started user_id=%s transaction_pk=%s", request.user.id, pk)
+
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
 
     if transaction.category:
+        logger.warning("api_suggest_for_transaction rejected: already categorized user_id=%s transaction_pk=%s", request.user.id, pk)
         return Response({'error': 'Transaction already categorized.'}, status=400)
 
     categories = list(Category.objects.filter(user=request.user).values('id', 'name', 'type'))
+    logger.info("api_suggest_for_transaction category_count=%s user_id=%s transaction_pk=%s", len(categories), request.user.id, pk)
+
     cat_map = {c['name']: c['id'] for c in categories}
 
     from .services.ai_service import suggest_category
@@ -522,6 +489,7 @@ def api_suggest_for_transaction(request, pk):
     )
 
     if name is None:
+        logger.info("api_suggest_for_transaction no suggestion returned user_id=%s transaction_pk=%s", request.user.id, pk)
         return Response({'suggestion': None})
 
     cat_id = cat_map.get(name)
@@ -529,6 +497,7 @@ def api_suggest_for_transaction(request, pk):
         transaction.ai_suggested_category_id = cat_id
         transaction.save(update_fields=['ai_suggested_category_id'])
 
+    logger.info("api_suggest_for_transaction completed user_id=%s transaction_pk=%s suggestion=%r category_id=%s", request.user.id, pk, name, cat_id)
     return Response({'suggestion': name, 'category_id': cat_id})
 
 
@@ -536,15 +505,20 @@ def api_suggest_for_transaction(request, pk):
 @authentication_classes([SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def api_accept_suggestion(request, pk):
+    logger.info("api_accept_suggestion started user_id=%s transaction_pk=%s", request.user.id, pk)
+
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
 
     if transaction.category:
+        logger.warning("api_accept_suggestion rejected: already has category user_id=%s transaction_pk=%s", request.user.id, pk)
         return Response({'error': 'Transaction already has a category.'}, status=400)
 
     if not transaction.ai_suggested_category:
+        logger.warning("api_accept_suggestion rejected: no AI suggestion user_id=%s transaction_pk=%s", request.user.id, pk)
         return Response({'error': 'No AI suggestion to accept.'}, status=400)
 
     transaction.category = transaction.ai_suggested_category
     transaction.save(update_fields=['category'])
 
+    logger.info("api_accept_suggestion completed user_id=%s transaction_pk=%s category_name=%r", request.user.id, pk, transaction.category.name)
     return Response({'category_name': transaction.category.name})
