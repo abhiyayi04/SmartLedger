@@ -18,6 +18,7 @@ urlpatterns = [
     path('transactions/imports/', views.import_history_list, name='import_history_list'),
     path('transactions/imports/<int:pk>/', views.import_history_detail, name='import_history_detail'),
     # AI API
+    path('api/toggle-subscription/<int:pk>/', views.api_toggle_subscription, name='api_toggle_subscription'),
     path('api/suggest-category/', views.api_suggest_category, name='api_suggest_category'),
     path('api/suggest-uncategorized/', views.api_suggest_uncategorized, name='api_suggest_uncategorized'),
     path('api/suggest-for-transaction/<int:pk>/', views.api_suggest_for_transaction, name='api_suggest_for_transaction'),

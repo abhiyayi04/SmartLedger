@@ -45,9 +45,14 @@ class TransactionForm(forms.ModelForm):
         widget=forms.NumberInput(attrs={'step': '0.01', 'min': '0.01', 'placeholder': '0.00'}),
     )
 
+    is_subscription = forms.BooleanField(
+        required=False,
+        label='Mark as subscription',
+    )
+
     class Meta:
         model = Transaction
-        fields = ('date', 'description', 'amount', 'vendor', 'transaction_type', 'category')
+        fields = ('date', 'description', 'amount', 'vendor', 'transaction_type', 'category', 'is_subscription')
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)

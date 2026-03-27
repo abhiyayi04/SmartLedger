@@ -18,8 +18,9 @@
     </form>
     <form method="post" action="{% url 'detect_subscriptions' %}" class="d-inline">
       {% csrf_token %}
-      <button type="submit" class="btn btn-outline-info">
-        <i class="bi bi-arrow-repeat me-1"></i>Detect Subscriptions
+      <button type="submit" class="btn btn-outline-info"
+              title="Re-scans all transactions for recurring patterns. Runs automatically on CSV import — use this after adding transactions manually or editing vendor names.">
+        <i class="bi bi-arrow-repeat me-1"></i>Re-scan Subscriptions
       </button>
     </form>
     <a href="{% url 'export_csv' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-dark">
@@ -148,9 +149,14 @@
                 <td>{{ t.description }}</td>
                 <td class="text-muted small">
                   {{ t.vendor|default:"—" }}
-                  {% if t.is_subscription %}
-                    <span class="badge bg-info text-dark ms-1" title="Recurring subscription"><i class="bi bi-arrow-repeat"></i></span>
-                  {% endif %}
+                  <button type="button"
+                          class="sub-toggle-btn border-0 bg-transparent p-0 ms-1 align-middle"
+                          data-pk="{{ t.pk }}"
+                          data-subscribed="{{ t.is_subscription|yesno:'true,false' }}"
+                          title="{% if t.is_subscription %}Subscribed — click to unmark{% else %}Click to mark as subscription{% endif %}">
+                    <i class="bi bi-arrow-repeat {% if t.is_subscription %}text-info{% else %}text-muted opacity-25{% endif %}"
+                       style="font-size:0.85rem"></i>
+                  </button>
                 </td>
                 <td id="cat-cell-{{ t.pk }}">
                   {% if t.category %}
@@ -343,6 +349,31 @@
   // Suggest All Uncategorized button
   const suggestAllBtn = document.getElementById('suggest-all-btn');
   const suggestAllStatus = document.getElementById('suggest-all-status');
+
+  // Subscription toggle buttons
+  document.querySelectorAll('.sub-toggle-btn').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      const pk = btn.dataset.pk;
+      const icon = btn.querySelector('i');
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/toggle-subscription/${pk}/`, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': getCsrfToken() },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const subscribed = data.is_subscription;
+          btn.dataset.subscribed = subscribed ? 'true' : 'false';
+          icon.className = `bi bi-arrow-repeat ${subscribed ? 'text-info' : 'text-muted opacity-25'}`;
+          btn.title = subscribed ? 'Subscribed — click to unmark' : 'Click to mark as subscription';
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
 
   suggestAllBtn.addEventListener('click', async function () {
     suggestAllBtn.disabled = true;

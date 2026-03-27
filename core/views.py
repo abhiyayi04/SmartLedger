@@ -428,6 +428,21 @@ def detect_subscriptions_view(request):
 @api_view(['POST'])
 @authentication_classes([SessionAuthentication])
 @permission_classes([IsAuthenticated])
+def api_toggle_subscription(request, pk):
+    """Toggle is_subscription on a single transaction. Idempotent flip: True→False, False→True."""
+    t = get_object_or_404(Transaction, pk=pk, user=request.user)
+    t.is_subscription = not t.is_subscription
+    t.save(update_fields=['is_subscription'])
+    logger.info(
+        "api_toggle_subscription user_id=%s pk=%s is_subscription=%s",
+        request.user.id, pk, t.is_subscription,
+    )
+    return Response({'is_subscription': t.is_subscription})
+
+
+@api_view(['POST'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 def api_suggest_category(request):
     logger.info("api_suggest_category started user_id=%s", request.user.id)
 
