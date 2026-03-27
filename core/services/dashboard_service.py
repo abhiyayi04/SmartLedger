@@ -2,7 +2,7 @@ import logging
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum
+from django.db.models import Count, Sum
 from django.db.models.functions import TruncMonth
 from collections import OrderedDict
 from decimal import Decimal
@@ -11,6 +11,47 @@ from ..models import Transaction
 from ..forms import DashboardFilterForm
 
 logger = logging.getLogger(__name__)
+
+
+def get_subscription_data(user, qs):
+    """
+    Return subscription summary for the given transaction queryset.
+    Groups flagged expense transactions by normalized_vendor and computes
+    the latest charge per vendor plus an estimated monthly total.
+    """
+    rows = (
+        qs.filter(transaction_type=Transaction.EXPENSE, is_subscription=True)
+        .exclude(normalized_vendor='')
+        .values('normalized_vendor')
+        .annotate(
+            total=Sum('amount'),
+            occurrences=Count('pk'),
+        )
+        .order_by('-total')
+    )
+
+    # Compute latest amount per vendor for the monthly estimate
+    subscriptions = []
+    monthly_total = Decimal('0')
+    for row in rows:
+        latest = (
+            qs.filter(
+                transaction_type=Transaction.EXPENSE,
+                is_subscription=True,
+                normalized_vendor=row['normalized_vendor'],
+            )
+            .order_by('-date')
+            .values_list('amount', flat=True)
+            .first()
+        ) or Decimal('0')
+        subscriptions.append({
+            'vendor': row['normalized_vendor'],
+            'latest_amount': latest,
+            'occurrences': row['occurrences'],
+        })
+        monthly_total += latest
+
+    return subscriptions, monthly_total
 
 
 @login_required
@@ -113,7 +154,10 @@ def dashboard(request):
 
     logger.info("Dashboard chart_data built user_id=%s category_pie_labels=%s monthly_labels=%s vendor_labels=%s", request.user.id, len(chart_data['category_pie']['labels']), len(chart_data['monthly']['labels']), len(chart_data['vendors']['labels']))
 
-    logger.info("Dashboard processing completed user_id=%s", request.user.id)
+    # Subscription summary
+    subscriptions, subscription_monthly_total = get_subscription_data(request.user, qs)
+
+    logger.info("Dashboard processing completed user_id=%s subscriptions=%s", request.user.id, len(subscriptions))
 
     return render(request, 'dashboard/index.html', {
         'income_total': income_total,
@@ -125,4 +169,6 @@ def dashboard(request):
         'date_from': date_from.isoformat() if date_from else '',
         'date_to': date_to.isoformat() if date_to else '',
         'total_transactions': qs.count(),
+        'subscriptions': subscriptions,
+        'subscription_monthly_total': subscription_monthly_total,
     })

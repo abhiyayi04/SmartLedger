@@ -4,13 +4,15 @@ from django.dispatch import receiver
 
 DEFAULT_CATEGORIES = [
     ('Revenue', 'income'),
-    ('Consulting', 'income'),
-    ('Software', 'expense'),
+    ('Rent', 'expense'),
+    ('Food & Dining', 'expense'),
+    ('Groceries', 'expense'),
+    ('Transportation', 'expense'),
+    ('Entertainment', 'expense'),
+    ('Shopping', 'expense'),
     ('Utilities', 'expense'),
-    ('Office Supplies', 'expense'),
-    ('Meals', 'expense'),
-    ('Travel', 'expense'),
-    ('Other', 'expense'),
+    ('Subscriptions', 'expense'),
+    ('Miscellaneous', 'expense'),
 ]
 
 

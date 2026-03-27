@@ -16,6 +16,7 @@ import logging
 from .forms import RegisterForm, ProfileForm, CategoryForm, TransactionForm, CSVUploadForm, TransactionFilterForm
 from .models import Category, ImportHistory, Transaction
 from .services.dashboard_service import dashboard
+from .services.subscription_service import detect_subscriptions
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,8 @@ def transaction_list(request):
             qs = qs.filter(amount__gte=d['amount_min'])
         if d.get('amount_max') is not None:
             qs = qs.filter(amount__lte=d['amount_max'])
+        if d.get('is_subscription'):
+            qs = qs.filter(is_subscription=True)
         sort = d.get('sort') or '-date'
         qs = qs.order_by(sort)
 
@@ -262,6 +265,14 @@ def csv_upload(request):
                     error_details=error_details,
                 )
                 logger.info("csv_upload import history created history_id=%s user_id=%s filename=%s", history.pk, request.user.id, filename)
+
+                sub_result = detect_subscriptions(request.user)
+                if sub_result['flagged_count']:
+                    logger.info(
+                        "csv_upload subscription detection flagged=%s matched_vendors=%s user_id=%s",
+                        sub_result['flagged_count'], len(sub_result['matched_vendors']), request.user.id,
+                    )
+
                 logger.info("csv_upload redirecting to import_history_detail history_id=%s user_id=%s", history.pk, request.user.id)
                 return redirect('import_history_detail', pk=history.pk)
             except ValueError as e:
@@ -387,6 +398,31 @@ def batch_accept_suggestions(request):
 
     logger.info("batch_accept_suggestions completed user_id=%s", request.user.id)
     return redirect(back or 'transaction_list')
+
+
+@login_required
+def detect_subscriptions_view(request):
+    """On-demand subscription detection for the current user."""
+    if request.method != 'POST':
+        return redirect('transaction_list')
+
+    result = detect_subscriptions(request.user)
+    flagged = result['flagged_count']
+    if flagged:
+        vendor_count = len(result['matched_vendors'])
+        messages.success(
+            request,
+            f'Detected {flagged} subscription transaction{"s" if flagged != 1 else ""} '
+            f'across {vendor_count} vendor{"s" if vendor_count != 1 else ""}.',
+        )
+    else:
+        messages.info(request, 'No new subscriptions detected.')
+
+    logger.info(
+        "detect_subscriptions_view completed user_id=%s flagged=%s matched=%s skipped=%s",
+        request.user.id, flagged, len(result['matched_vendors']), len(result['skipped_vendors']),
+    )
+    return redirect('transaction_list')
 
 
 @api_view(['POST'])

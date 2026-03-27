@@ -107,7 +107,7 @@ class RegistrationTests(TestCase):
         self.assertRedirects(response, reverse('dashboard'))
         self.assertTrue(response.wsgi_request.user.is_authenticated)
         # Default categories should be seeded by the signal
-        self.assertEqual(Category.objects.filter(user__username='newuser').count(), 8)
+        self.assertEqual(Category.objects.filter(user__username='newuser').count(), 10)
 
     def test_mismatched_passwords_do_not_create_user(self):
         # If password1 and password2 don't match, the form is invalid and

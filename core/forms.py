@@ -145,6 +145,7 @@ class TransactionFilterForm(forms.Form):
         ],
         required=False,
     )
+    is_subscription = forms.BooleanField(required=False, label='Subscriptions only')
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)

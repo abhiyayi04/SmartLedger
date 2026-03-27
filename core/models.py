@@ -57,6 +57,7 @@ class Transaction(models.Model):
         Category, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='ai_suggested_transactions'
     )
+    is_subscription = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

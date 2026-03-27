@@ -1,60 +1,248 @@
 {% extends 'base.html' %}
 
-{% block title %}SmartLedger — Financial Analytics{% endblock %}
+{% block title %}SmartLedger — Student Expense Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+  .hero-gradient {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 60%, #6d28d9 100%);
+    border-radius: 1.25rem;
+    padding: 4rem 2.5rem;
+  }
+  .feature-icon-wrap {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+  }
+  .step-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .step-connector {
+    flex: 1;
+    height: 2px;
+    background: #e2e8f0;
+    margin: 0 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center mt-5">
-  <div class="col-md-8 text-center">
-    <i class="bi bi-journal-richtext display-1 text-dark"></i>
-    <h1 class="mt-3 fw-bold">SmartLedger</h1>
-    <p class="lead text-muted mt-3">
-      Track your income and expenses, import transactions from CSV,
-      get AI-powered category suggestions, and visualize your financial health.
-    </p>
-    <div class="mt-4 d-flex gap-3 justify-content-center">
-      {% if user.is_authenticated %}
-        <a href="{% url 'dashboard' %}" class="btn btn-dark btn-lg">
-          <i class="bi bi-speedometer2 me-2"></i>Go to Dashboard
-        </a>
-      {% else %}
-        <a href="{% url 'register' %}" class="btn btn-dark btn-lg">
-          <i class="bi bi-person-plus me-2"></i>Get Started
-        </a>
-        <a href="{% url 'login' %}" class="btn btn-outline-dark btn-lg">
-          <i class="bi bi-box-arrow-in-right me-2"></i>Login
-        </a>
-      {% endif %}
+
+<!-- ── Hero ───────────────────────────────────────────────────────────────── -->
+<div class="hero-gradient text-white mb-5">
+  <div class="row align-items-center g-4">
+    <div class="col-lg-7">
+      <span class="badge rounded-pill mb-3 px-3 py-2"
+            style="background:rgba(255,255,255,0.18); font-size:.8rem; letter-spacing:.03em">
+        <i class="bi bi-mortarboard-fill me-1"></i>Built for college students
+      </span>
+      <h1 class="display-5 fw-bold lh-sm mb-3">
+        Stop guessing<br>where your money went.
+      </h1>
+      <p class="mb-4" style="font-size:1.1rem; opacity:.8; max-width:480px">
+        Import your bank statement, let AI sort your expenses, and finally see where
+        your dining hall dollars — and everything else — actually go.
+      </p>
+      <div class="d-flex gap-3 flex-wrap align-items-center">
+        {% if user.is_authenticated %}
+          <a href="{% url 'dashboard' %}" class="btn btn-light btn-lg fw-semibold px-4">
+            <i class="bi bi-speedometer2 me-2"></i>Go to Dashboard
+          </a>
+        {% else %}
+          <a href="{% url 'register' %}" class="btn btn-light btn-lg fw-semibold px-4">
+            <i class="bi bi-person-plus me-2"></i>Get Started — it's free
+          </a>
+          <a href="{% url 'login' %}" class="btn btn-outline-light btn-lg px-4">
+            Log in
+          </a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-lg-5 d-none d-lg-flex justify-content-end align-items-center">
+      <!-- Decorative mini-dashboard mockup -->
+      <div class="rounded-4 p-3" style="background:rgba(255,255,255,0.12); width:280px; backdrop-filter:blur(6px)">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <span class="small fw-semibold opacity-75">This month</span>
+          <span class="badge rounded-pill" style="background:rgba(255,255,255,0.2)">March 2026</span>
+        </div>
+        <div class="mb-3">
+          <div class="small opacity-75 mb-1">Total Expenses</div>
+          <div class="fw-bold fs-3">$842.50</div>
+        </div>
+        <div class="mb-2">
+          <div class="d-flex justify-content-between small mb-1">
+            <span>Food & Dining</span><span>$310</span>
+          </div>
+          <div class="progress" style="height:6px;border-radius:3px">
+            <div class="progress-bar bg-white" style="width:37%;opacity:.9"></div>
+          </div>
+        </div>
+        <div class="mb-2">
+          <div class="d-flex justify-content-between small mb-1">
+            <span>Subscriptions</span><span>$45</span>
+          </div>
+          <div class="progress" style="height:6px;border-radius:3px">
+            <div class="progress-bar bg-white" style="width:18%;opacity:.7"></div>
+          </div>
+        </div>
+        <div class="mb-0">
+          <div class="d-flex justify-content-between small mb-1">
+            <span>Transportation</span><span>$120</span>
+          </div>
+          <div class="progress" style="height:6px;border-radius:3px">
+            <div class="progress-bar bg-white" style="width:28%;opacity:.6"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<div class="row mt-5 g-4">
-  <div class="col-md-4">
-    <div class="card h-100 border-0 shadow-sm">
-      <div class="card-body text-center p-4">
-        <i class="bi bi-upload fs-1 text-primary"></i>
-        <h5 class="mt-3">Import Transactions</h5>
-        <p class="text-muted">Upload CSV files from your bank or accounting software and import transactions in bulk.</p>
+<!-- ── Features ───────────────────────────────────────────────────────────── -->
+<div class="mb-5">
+  <div class="text-center mb-4">
+    <h2 class="fw-bold mb-1">Everything you need to manage your money</h2>
+    <p class="text-muted">No spreadsheets. No guesswork. Just clarity.</p>
+  </div>
+  <div class="row g-4">
+
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm h-100 p-1">
+        <div class="card-body d-flex gap-3">
+          <div class="feature-icon-wrap bg-primary bg-opacity-10">
+            <i class="bi bi-upload text-primary"></i>
+          </div>
+          <div>
+            <h6 class="fw-bold mb-1">Import from your bank</h6>
+            <p class="text-muted small mb-0">
+              Upload a CSV from any bank or payment app. SmartLedger parses it
+              instantly, deduplicates entries, and logs every import with a full
+              error report.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card h-100 border-0 shadow-sm">
-      <div class="card-body text-center p-4">
-        <i class="bi bi-robot fs-1 text-success"></i>
-        <h5 class="mt-3">AI Categorization</h5>
-        <p class="text-muted">Let AI suggest categories for your transactions based on descriptions. Review and confirm with one click.</p>
+
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm h-100 p-1">
+        <div class="card-body d-flex gap-3">
+          <div class="feature-icon-wrap bg-success bg-opacity-10">
+            <i class="bi bi-stars text-success"></i>
+          </div>
+          <div>
+            <h6 class="fw-bold mb-1">AI category suggestions</h6>
+            <p class="text-muted small mb-0">
+              GPT-4o-mini reads your transaction descriptions and suggests the
+              right category. You review and accept — one click at a time or
+              all at once.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card h-100 border-0 shadow-sm">
-      <div class="card-body text-center p-4">
-        <i class="bi bi-bar-chart-line fs-1 text-warning"></i>
-        <h5 class="mt-3">Financial Insights</h5>
-        <p class="text-muted">Visualize spending trends, category breakdowns, and top vendors with interactive charts.</p>
+
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm h-100 p-1">
+        <div class="card-body d-flex gap-3">
+          <div class="feature-icon-wrap bg-info bg-opacity-10">
+            <i class="bi bi-arrow-repeat text-info"></i>
+          </div>
+          <div>
+            <h6 class="fw-bold mb-1">Automatic subscription detection</h6>
+            <p class="text-muted small mb-0">
+              SmartLedger spots recurring charges — Netflix, Spotify, gym
+              memberships — and surfaces them in one place so you always know
+              your monthly fixed costs.
+            </p>
+          </div>
+        </div>
       </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm h-100 p-1">
+        <div class="card-body d-flex gap-3">
+          <div class="feature-icon-wrap bg-warning bg-opacity-10">
+            <i class="bi bi-bar-chart-line text-warning"></i>
+          </div>
+          <div>
+            <h6 class="fw-bold mb-1">Spending insights & trends</h6>
+            <p class="text-muted small mb-0">
+              Interactive charts show your category breakdown, monthly income vs.
+              expenses, and top vendors — filtered to any date range you choose.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── How it works ───────────────────────────────────────────────────────── -->
+<div class="card border-0 shadow-sm mb-5">
+  <div class="card-body p-4 p-md-5">
+    <div class="text-center mb-4">
+      <h2 class="fw-bold mb-1">Up and running in three steps</h2>
+      <p class="text-muted">No setup fees, no credit card, no complicated onboarding.</p>
+    </div>
+    <div class="row g-4 align-items-start">
+
+      <div class="col-md-4 text-center">
+        <div class="step-circle bg-primary text-white mx-auto mb-3">1</div>
+        <h6 class="fw-bold">Export from your bank</h6>
+        <p class="text-muted small">
+          Download a CSV from your bank's website or app. Most banks offer this
+          in account activity or statement downloads.
+        </p>
+      </div>
+
+      <div class="col-md-4 text-center">
+        <div class="step-circle bg-primary text-white mx-auto mb-3">2</div>
+        <h6 class="fw-bold">Import &amp; categorize</h6>
+        <p class="text-muted small">
+          Upload the CSV to SmartLedger. AI suggests a category for each
+          transaction — accept them all in one click or adjust individually.
+        </p>
+      </div>
+
+      <div class="col-md-4 text-center">
+        <div class="step-circle bg-primary text-white mx-auto mb-3">3</div>
+        <h6 class="fw-bold">See the full picture</h6>
+        <p class="text-muted small">
+          Your dashboard shows spending by category, monthly trends, top vendors,
+          and auto-detected subscriptions — all in one view.
+        </p>
+      </div>
+
     </div>
   </div>
 </div>
+
+<!-- ── Bottom CTA ─────────────────────────────────────────────────────────── -->
+{% if not user.is_authenticated %}
+<div class="text-center py-4 mb-4">
+  <h4 class="fw-bold mb-2">Ready to take control of your budget?</h4>
+  <p class="text-muted mb-4">Free to use. No credit card required.</p>
+  <a href="{% url 'register' %}" class="btn btn-dark btn-lg px-5 fw-semibold">
+    Create your free account <i class="bi bi-arrow-right ms-2"></i>
+  </a>
+</div>
+{% endif %}
+
 {% endblock %}

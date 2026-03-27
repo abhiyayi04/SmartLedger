@@ -16,6 +16,12 @@
         <i class="bi bi-check-all me-1"></i>Batch Accept Suggestions
       </button>
     </form>
+    <form method="post" action="{% url 'detect_subscriptions' %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-outline-info">
+        <i class="bi bi-arrow-repeat me-1"></i>Detect Subscriptions
+      </button>
+    </form>
     <a href="{% url 'export_csv' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-dark">
       <i class="bi bi-download me-1"></i>Export CSV
     </a>
@@ -98,6 +104,13 @@
                step="0.01" min="0" placeholder="0.00"
                value="{{ filter_form.amount_max.value|default:'' }}" style="width:100px">
       </div>
+      <div class="col-auto d-flex align-items-end">
+        <div class="form-check mb-1">
+          <input class="form-check-input" type="checkbox" name="is_subscription" id="id_is_subscription" value="true"
+                 {% if filter_form.is_subscription.value %}checked{% endif %}>
+          <label class="form-check-label small" for="id_is_subscription">Subscriptions only</label>
+        </div>
+      </div>
       {% if filter_form.non_field_errors %}
         <div class="col-12">
           <div class="alert alert-danger py-1 px-2 mb-0 small">{{ filter_form.non_field_errors.0 }}</div>
@@ -133,7 +146,12 @@
               <tr>
                 <td class="ps-4 text-nowrap">{{ t.date }}</td>
                 <td>{{ t.description }}</td>
-                <td class="text-muted small">{{ t.vendor|default:"—" }}</td>
+                <td class="text-muted small">
+                  {{ t.vendor|default:"—" }}
+                  {% if t.is_subscription %}
+                    <span class="badge bg-info text-dark ms-1" title="Recurring subscription"><i class="bi bi-arrow-repeat"></i></span>
+                  {% endif %}
+                </td>
                 <td id="cat-cell-{{ t.pk }}">
                   {% if t.category %}
                     <span class="badge bg-secondary">{{ t.category.name }}</span>
