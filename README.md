@@ -19,12 +19,11 @@ The standout feature is the AI-powered categorization pipeline built on **OpenAI
 
 | Layer | Technology |
 |---|---|
-| Backend | Python 3, Django 5.2, Django REST Framework 3.16 |
-| Database | MySQL (utf8mb4) |
-| AI | OpenAI API — GPT-4o-mini |
+| Backend | Python 3, Django 5.2, Django REST Framework |
+| Database | MySQL |
+| AI | OpenAI API |
 | Frontend | Bootstrap 5, Chart.js, Django Templates, Vanilla JS |
-| Authentication | Django built-in auth (session-based, CSRF-protected) |
-| Environment | python-dotenv |
+| Authentication | Django built-in auth |
 
 ---
 
